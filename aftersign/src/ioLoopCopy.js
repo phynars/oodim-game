@@ -29,22 +29,21 @@ export const ioOfferCopyFor = (packetOutcome) => {
 export const ioOfferHeading = (packetOutcome) => ioOfferCopyFor(packetOutcome).heading;
 
 // Canonical acknowledgement copy for the job the player just accepted.
-// These keys match the job IDs authored by the M-LOOP offer surface.
+// Keyed by the job IDs the served page can actually offer: the
+// `selectIoJobOffers(offeredJobsMemoryFromIoMemory(...))` path in
+// main.js yields only safe-delivery (first visit) and night-transfer /
+// signed-receipt (sealed history). The trusted-courier, guarded and
+// failed offers (sealed-return, private-ledger, low-risk-errand,
+// redemption-route) have no player route yet. Their lines come back
+// with that route and a tap-driven spec in #2889. Until then those
+// IDs get the generic acknowledgement.
 const JOB_ACCEPTED_LINE_BY_JOB_ID = Object.freeze({
   "job-safe-delivery":
     "The lit stair, then. Keep the seal closed. Return with it whole; I will know you chose care.",
-  "job-sealed-return":
-    "Take it back sealed. If the box refuses it, bring the refusal to me. When you return, I will know what you kept faith with.",
-  "job-private-ledger":
-    "A private ledger leaves no clean hands. Bring yours back, and do not ask me to call it clean. I will remember what you chose to carry.",
   "job-night-transfer":
     "Cross after the bell. Do not mistake the quiet for permission. When you return, I will remember that you chose the dark — and whether you let it choose your way home.",
   "job-signed-receipt":
     "Get it in ink. A promise is lighter when someone has to carry it. I remember who made it answer.",
-  "job-low-risk-errand":
-    "Stay where the light can find you. Bring back what it lets you keep. I remember caution.",
-  "job-redemption-route":
-    "Pay it back. The account is still open because I left it open. I remember who returned.",
 });
 
 const DEFAULT_JOB_ACCEPTED_LINE =
