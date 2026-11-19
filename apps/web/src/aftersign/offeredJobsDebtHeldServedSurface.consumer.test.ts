@@ -190,14 +190,21 @@ describe("#offeredJobs debt-held served-surface wiring (derives from Io memory +
         object,
       });
 
+      // PR #2890 F1: sealed + "I listened" is the played first-delivery
+      // path — it must stay on the completed set.
       expect(offeredJobsMemoryFromIoMemory([
         buildSealedFact(),
         routeFact(NPC_MEMORY_OBJECT.ROUTE_DONE),
-      ])).toEqual({ trustPosture: "trusted-courier" });
+      ])).toEqual({ priorOutcome: "completed" });
       expect(surfaceOfferIdsFor([
         buildSealedFact(),
         routeFact(NPC_MEMORY_OBJECT.ROUTE_DONE),
-      ])).toEqual(["job-sealed-return", "job-private-ledger"]);
+      ])).toEqual(["job-night-transfer", "job-signed-receipt"]);
+      // Opened + "I listened" stays debt-held.
+      expect(offeredJobsMemoryFromIoMemory([
+        buildOpenedFact(),
+        routeFact(NPC_MEMORY_OBJECT.ROUTE_DONE),
+      ])).toEqual({ debtHeld: 1 });
 
       expect(offeredJobsMemoryFromIoMemory([
         buildSealedFact(),

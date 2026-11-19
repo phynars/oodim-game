@@ -127,18 +127,22 @@ export function offeredJobsMemoryFromIoMemory(memory) {
   const routeDoneCount = countRouteAttention(memory, NPC_MEMORY_OBJECT.ROUTE_DONE);
   const routeSkippedCount = countRouteAttention(memory, NPC_MEMORY_OBJECT.ROUTE_SKIPPED);
 
-  // A sealed delivery paired with completing Io's route instructions is the
-  // durable proof for the trusted-courier branch. A skipped route keeps a
-  // courier guarded; opening the packet and leaving the route incomplete is
-  // a failed run. These signals deliberately precede the legacy completed /
-  // debt-held fallbacks below.
-  if (sealedCount > 0 && routeDoneCount > 0) {
-    return { trustPosture: "trusted-courier" };
-  }
-  if (sealedCount > 0 && routeSkippedCount > 0) {
+  // #2889 / PR #2890 review F1: only an EXPLICIT skipped route
+  // (the player tapped `skip-kiosk-acknowledge`) moves a delivery off
+  // the legacy completed / debt-held routing. A sealed delivery with
+  // "I listened" (ROUTE_DONE) or with no route tap at all stays on the
+  // completed set — that is the first-delivery path every played
+  // round-two spec walks.
+  //   - sealed + skipped → guarded (low-risk errand)
+  //   - opened + skipped → failed (redemption route)
+  // A sealed + done history is still a completed courier: Io's memory
+  // is replaced per delivery, so no served history distinguishes a
+  // trusted courier from a completed one yet; trusted-courier is not
+  // derived here.
+  if (sealedCount > 0 && routeSkippedCount > 0 && routeDoneCount === 0) {
     return { trustPosture: "guarded" };
   }
-  if (openedCount > 0 && routeSkippedCount > 0) {
+  if (sealedCount === 0 && openedCount > 0 && routeSkippedCount > 0 && routeDoneCount === 0) {
     return { priorOutcome: "failed" };
   }
   if (sealedCount > 0) {
