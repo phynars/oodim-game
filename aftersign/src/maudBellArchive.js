@@ -116,19 +116,21 @@ export const renderMaudBellArchiveEnding = (
     if (doorChoice) {
       card.setAttribute("data-door-choice", doorChoice);
       const selected = doorChoices.find((choice) => choice.id === doorChoice);
-      const completion = doc.createElement("p");
-      completion.className = "episode-one-completion__choice";
-      completion.textContent = selected
-        ? `You chose: ${selected.label}. ${selected.consequence}`
-        : "Your Unlit Door choice is complete.";
+      // Saved doorChoice values are always one of the three door ids; an
+      // unknown value renders no completion line rather than invented copy.
+      const completion = selected ? doc.createElement("p") : null;
+      if (completion) {
+        completion.className = "episode-one-completion__choice";
+        completion.textContent = `You chose: ${selected.label}. ${selected.consequence}`;
+      }
       if (ioFinalDialogue) {
         const finalLine = doc.createElement("p");
         finalLine.className = "maud-bell-archive__io-final";
         finalLine.setAttribute("data-io-final-id", ioFinalDialogue.id);
         finalLine.textContent = ioFinalDialogue.text;
         light.after(finalLine);
-        finalLine.after(completion);
-      } else {
+        if (completion) finalLine.after(completion);
+      } else if (completion) {
         light.after(completion);
       }
       return;
