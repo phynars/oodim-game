@@ -283,6 +283,9 @@ import { runDeliverySnapshotStateChecks } from "./src/deliverySnapshotState.test
 // extensioned `./bellArchiveScene.ts`, which has no relative imports.
 import { runBellArchiveSceneChecks } from "./src/bellArchiveScene.test.ts";
 import { runIoDialogueResolverChecks } from "./src/ioDialogueResolver.test.ts";
+// Episode 2 door-decided jobs (#2918): data layer + doorChoice round-trip
+// through persistence.js. Both imports are import-free plain JS modules.
+import { runEpisodeTwoJobsChecks } from "./src/episodeTwoJobs.test.ts";
 // Delivery auto-advance timer uniqueness (#2788): pins the e2e
 // `dropDeliveryAutoAdvance` assumption that served JS has exactly one 1180 ms
 // timer. Uses node:fs, so it sits outside `aftersign/src/`; harness-only, so
@@ -450,6 +453,7 @@ const runners: Array<Runner | AsyncRunner> = [
   { label: "runBellArchiveSceneChecks", run: runBellArchiveSceneChecks },
   { label: "runIoDialogueResolverChecks", run: runIoDialogueResolverChecks },
   { label: "runDeliveryTimerUniquenessChecks", run: runDeliveryTimerUniquenessChecks },
+  { label: "runEpisodeTwoJobsChecks", run: runEpisodeTwoJobsChecks },
 ];
 
 async function main(): Promise<void> {

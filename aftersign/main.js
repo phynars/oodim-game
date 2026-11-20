@@ -9,6 +9,7 @@
 import * as THREE from "three";
 import { createKioskScene } from "./src/kioskScene.js";
 import { resolveIoDialogue } from "./src/ioDialogueResolver.js";
+import { episodeTwoJobForStory } from "./src/episodeTwoJobs.js";
 import { createCameraController } from "./src/presentation/cameraController.js";
 import { createDialogueController } from "./src/presentation/dialogueController.js";
 import { createMobileInputController } from "./src/presentation/mobileInputController.js";
@@ -1665,6 +1666,20 @@ const lineForBeat = () => {
       recall.setAttribute("data-night-post-door-choice", state.story.doorChoice ?? "");
       recall.textContent = `Io remembers the door you chose: ${NIGHT_POST_DOOR_LABELS[state.story.doorChoice] ?? ""}.`;
       host.append(heading, recall);
+      // #2918: the door chosen in Episode 1 decides the Episode 2 job.
+      const job = episodeTwoJobForStory(state.story);
+      if (job) {
+        const jobCard = document.createElement("section");
+        jobCard.id = "episodeTwoJob";
+        jobCard.setAttribute("data-episode-two-job-id", job.id);
+        jobCard.setAttribute("data-episode-two-door-choice", job.doorChoice);
+        const jobName = document.createElement("strong");
+        jobName.textContent = job.name;
+        const jobBrief = document.createElement("p");
+        jobBrief.textContent = job.brief;
+        jobCard.append(jobName, jobBrief);
+        host.append(jobCard);
+      }
     }
     state.npcs.io.lastLine = `Night Post. I remember the door you chose: ${NIGHT_POST_DOOR_LABELS[state.story.doorChoice] ?? ""}.`;
     return state.npcs.io.lastLine;
