@@ -435,7 +435,7 @@ export function getAftersignStoryState(
                 disposition: "recognizes-player" as const,
                 rememberedSessionIds,
                 memory: {
-                  redTagDeliveredToThirdNpc: true,
+                  redTagDeliveredToThirdNpc: true as const,
                 },
               },
             ]

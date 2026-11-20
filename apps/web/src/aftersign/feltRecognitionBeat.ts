@@ -37,6 +37,11 @@ export const AFTERSIGN_FELT_RECOGNITION_BEAT = {
 export type AftersignFeltRecognitionReturnVariant =
   typeof AFTERSIGN_FELT_RECOGNITION_BEAT.returnVariant;
 
+/** The reduced-motion projection may replace literal contract values. */
+export type AftersignFeltRecognitionReturnVariantProjection = {
+  [Key in keyof AftersignFeltRecognitionReturnVariant]: number | string;
+};
+
 /**
  * Reduced-motion projection of the return-variant numbers. Motion-heavy
  * fields collapse to 0 (lift / camera nod / shake / chip travel); tempo
@@ -47,7 +52,7 @@ export type AftersignFeltRecognitionReturnVariant =
  */
 export function projectReturnVariantForReducedMotion(
   variant: AftersignFeltRecognitionReturnVariant = AFTERSIGN_FELT_RECOGNITION_BEAT.returnVariant,
-): AftersignFeltRecognitionReturnVariant {
+): AftersignFeltRecognitionReturnVariantProjection {
   return {
     anticipationMs: variant.anticipationMs,
     cardLiftPx: 0,
@@ -59,7 +64,7 @@ export function projectReturnVariantForReducedMotion(
     chipPopScale: 1,
     easeOutBack: variant.easeSettle,
     easeSettle: variant.easeSettle,
-  } as AftersignFeltRecognitionReturnVariant;
+  };
 }
 
 export type AftersignFeltRecognitionBeat = typeof AFTERSIGN_FELT_RECOGNITION_BEAT;
@@ -220,8 +225,8 @@ export function playAftersignFeltRecognitionBeat(
       layer.dataset.returnBloomPulseMs = String(rv.bloomPulseMs);
       layer.dataset.returnChipPopPx = String(rv.chipPopPx);
       layer.dataset.returnChipPopScale = String(rv.chipPopScale);
-      layer.dataset.returnEaseOutBack = rv.easeOutBack;
-      layer.dataset.returnEaseSettle = rv.easeSettle;
+      layer.dataset.returnEaseOutBack = String(rv.easeOutBack);
+      layer.dataset.returnEaseSettle = String(rv.easeSettle);
     }
   }
 
