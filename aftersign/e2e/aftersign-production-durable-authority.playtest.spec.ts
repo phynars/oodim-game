@@ -17,8 +17,8 @@ import { clearLocalStorage } from "./clearLocalStorage";
 //   - Guarded by AFTERSIGN_PRODUCTION_URL: unset → test.skip, so cold
 //     local + CI runs stay green without needing a deployed target.
 //   - Opt-in script: `npm run test:e2e:aftersign:production-durable-authority`
-//     (added in the root package.json alongside this file) sets the env
-//     var expected here and invokes playwright on this spec only.
+//     defaults the env var to the deployed game URL (while allowing an
+//     explicit override) and invokes playwright on this spec only.
 //
 // What this spec proves (and the sibling two-round spec does NOT):
 //   The two-round spec drives a full round inside ONE page document and
