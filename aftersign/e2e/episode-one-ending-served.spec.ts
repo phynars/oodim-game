@@ -419,6 +419,46 @@ test.describe("Saint Orra red-tag recall", () => {
 test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
   test.describe.configure({ mode: "serial" });
 
+  test("shows Episode 1 completion and the visibly tapped door choice", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
+    await page.setViewportSize(PHONE_VIEWPORT);
+    const slot = `unlit-ending-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await waitForVersion(page);
+    await runToEnding(page, "sealed");
+    await carryRedTagToSaintOrra(page);
+    await tapChoice(page, "carry-name-to-bell-archive");
+    await tapChoice(page, "archive-decoy");
+    await tapChoice(page, "open-unlit-door");
+    await tapChoice(page, "hang-new-sign");
+
+    const card = await readEndingCard(page);
+    await expect(card.getByRole("heading", { name: "Episode 1 has ended" })).toBeVisible();
+    await expect(card).toContainText("hung a new sign");
+    const box = await card.boundingBox();
+    expect(box).not.toBeNull();
+    if (box) expect(box.y + box.height).toBeLessThanOrEqual(PHONE_VIEWPORT.height);
+  });
+
+  test("does not claim an Unlit Door action the player did not tap", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
+    await page.setViewportSize(PHONE_VIEWPORT);
+    const slot = `unlit-no-false-memory-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await waitForVersion(page);
+    await runToEnding(page, "sealed");
+    await carryRedTagToSaintOrra(page);
+    await tapChoice(page, "carry-name-to-bell-archive");
+    await tapChoice(page, "archive-decoy");
+    await tapChoice(page, "open-unlit-door");
+    await tapChoice(page, "protect-private-lie");
+
+    const card = await readEndingCard(page);
+    await expect(card).toContainText("protected the private lie");
+    await expect(card).not.toContainText("kept the official record");
+    await expect(card).not.toContainText("hung a new sign");
+  });
+
   test("TRUE ending: sealed packet + carried red tag → ending-bell-true, lit light, no false memory", async ({
     page,
   }) => {
