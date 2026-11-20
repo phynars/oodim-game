@@ -5671,9 +5671,14 @@ const resetSliceSave = async () => {
   // fresh must clear it too, or a replayed ending renders it already chosen.
   state.story.doorChoice = null;
   state.story.firstPacketSealed = null;
+  // PR #2909 F1: Start fresh must leave the Night Post too — otherwise
+  // lineForBeat keeps taking the continuation branch and persistence saves
+  // episodeTwoNightPost:true again.
+  state.story.episodeTwoNightPost = false;
   {
     const endingHost = document.getElementById("episodeOneEnding");
     while (endingHost?.firstChild) endingHost.removeChild(endingHost.firstChild);
+    endingHost?.removeAttribute("data-continuation");
   }
   state.player = {
     id: bootstrapPlayerId,

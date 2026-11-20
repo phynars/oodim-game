@@ -108,4 +108,20 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await expect(page.locator("#episodeOneEnding")).toContainText("Keep the official record");
     await expect(page.locator("#beginEpisodeTwo")).toHaveCount(0);
   });
+
+  test("Start fresh from the Night Post leaves it and stays left after reload", async ({ page }) => {
+    test.setTimeout(TEST_TIMEOUT);
+    await page.goto(`/aftersign/?slot=${slotFor("reset")}`, { waitUntil: "load" });
+    await runToEnding(page);
+    await page.locator("#beginEpisodeTwo").tap();
+    await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toBeVisible({ timeout: WAIT_MS });
+    await tapVisible(page, "#resetButton");
+    await expect(page.locator("#episodeOneEnding[data-continuation]")).toHaveCount(0, { timeout: WAIT_MS });
+    await expect(page.locator("#episodeOneEnding")).not.toContainText("Night Post");
+    await waitForBeat(page, "packet-offered");
+    await page.reload({ waitUntil: "load" });
+    await waitForBeat(page, "packet-offered");
+    await expect(page.locator("#episodeOneEnding[data-continuation]")).toHaveCount(0);
+    await expect(page.locator("#episodeOneEnding")).not.toContainText("Night Post");
+  });
 });
