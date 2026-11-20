@@ -24,7 +24,7 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
   await tapVisible(page, `button[data-choice-id="${choiceId}"]:not([disabled])`);
 }
 
-async function runToEnding(page: Page): Promise<void> {
+async function runToEnding(page: Page, doorChoice = "keep-official-record"): Promise<void> {
   await waitForBeat(page, "packet-offered");
   await tapVisible(page, '#offeredJobs button[data-offered-job-id="job-safe-delivery"]');
   await tapVisible(page, "#packetButton");
@@ -49,7 +49,7 @@ async function runToEnding(page: Page): Promise<void> {
   await tapVisible(page, 'button[data-maud-name-choice="remembered-name"]');
   await expect(page.locator('[data-ending-id="maud-bell-archive-lit"]')).toBeVisible({ timeout: WAIT_MS });
   await tapChoice(page, "open-unlit-door");
-  await tapChoice(page, "keep-official-record");
+  await tapChoice(page, doorChoice);
   await expect(page.locator("#beginEpisodeTwo")).toBeVisible({ timeout: WAIT_MS });
 }
 
@@ -124,4 +124,26 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await expect(page.locator("#episodeOneEnding[data-continuation]")).toHaveCount(0);
     await expect(page.locator("#episodeOneEnding")).not.toContainText("Night Post");
   });
+
+  // #2918: each Unlit Door choice serves its own Episode 2 job at the Night Post.
+  for (const [doorChoice, jobId, name, brief] of [
+    ["keep-official-record", "ep2-ledger-run", "The Ledger Run", "Carry the sealed official record to the Night Post registry before the lamps go out."],
+    ["protect-private-lie", "ep2-quiet-envelope", "The Quiet Envelope", "Slip an unmarked envelope past the night clerk so the lie you kept stays kept."],
+    ["hang-new-sign", "ep2-new-sign", "The New Sign", "Haul the freshly painted sign across the district and hang it where the old one fell."],
+  ] as const) {
+    test(`serves the ${jobId} job after a visible ${doorChoice} tap`, async ({ page }) => {
+      test.setTimeout(TEST_TIMEOUT);
+      await page.goto(`/aftersign/?slot=${slotFor(`job-${doorChoice}`)}`, { waitUntil: "load" });
+      await runToEnding(page, doorChoice);
+      await page.locator("#beginEpisodeTwo").tap();
+      const job = page.locator(`#episodeTwoJob[data-episode-two-job-id="${jobId}"]`);
+      await expect(job).toBeVisible({ timeout: WAIT_MS });
+      await expect(job).toHaveAttribute("data-episode-two-door-choice", doorChoice);
+      await expect(job).toContainText(name);
+      await expect(job).toContainText(brief);
+      await expect(page.locator("#episodeTwoJob")).toHaveCount(1);
+      await page.reload({ waitUntil: "load" });
+      await expect(page.locator(`#episodeTwoJob[data-episode-two-job-id="${jobId}"]`)).toBeVisible({ timeout: WAIT_MS });
+    });
+  }
 });

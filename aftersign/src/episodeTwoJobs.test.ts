@@ -17,12 +17,11 @@ export async function runEpisodeTwoJobsChecks(): Promise<void> {
   const jobs: any[] = DOOR_CHOICES.map((c: string) => EPISODE_TWO_JOBS[c]);
   jobs.forEach((job, i) => {
     assert(job && job.doorChoice === DOOR_CHOICES[i], `job keyed to ${DOOR_CHOICES[i]}`);
-    assert(job.name && job.brief && job.controls.accept && job.controls.refuse, `job ${job.id} has copy`);
+    assert(job.name && job.brief, `job ${job.id} has copy`);
   });
   for (const key of ["id", "name", "deliveryId", "brief"]) {
     assert(new Set(jobs.map((j) => j[key])).size === 3, `unique ${key}`);
   }
-  assert(new Set(jobs.map((j) => j.controls.accept)).size === 3, "unique accept control");
 
   assert(episodeTwoJobForStory(null) === null, "null story -> no job");
   assert(episodeTwoJobForStory({ doorChoice: null }) === null, "no door -> no job");

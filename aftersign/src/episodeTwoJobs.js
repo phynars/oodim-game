@@ -2,8 +2,9 @@
 //
 // Data layer only: one job per persisted `story.doorChoice` value
 // (see runtime/persistence.js `buildPersistPayload().story.doorChoice`).
-// No rendering here — the Night Post wiring (#2919) consumes
-// `episodeTwoJobForStory(state.story)` to pick the job to serve.
+// main.js renders the job's name and brief at the Night Post via
+// `episodeTwoJobForStory(state.story)`; accept/refuse controls and the
+// delivery-id handoff land with #2919.
 
 export const DOOR_CHOICES = Object.freeze([
   "keep-official-record",
@@ -18,10 +19,6 @@ export const EPISODE_TWO_JOBS = Object.freeze({
     deliveryId: "ep2-sealed-ledger",
     name: "The Ledger Run",
     brief: "Carry the sealed official record to the Night Post registry before the lamps go out.",
-    controls: Object.freeze({
-      accept: "Carry the sealed ledger",
-      refuse: "Leave the ledger on the counter",
-    }),
   }),
   "protect-private-lie": Object.freeze({
     id: "ep2-quiet-envelope",
@@ -29,10 +26,6 @@ export const EPISODE_TWO_JOBS = Object.freeze({
     deliveryId: "ep2-unmarked-envelope",
     name: "The Quiet Envelope",
     brief: "Slip an unmarked envelope past the night clerk so the lie you kept stays kept.",
-    controls: Object.freeze({
-      accept: "Hide the envelope in your coat",
-      refuse: "Hand the envelope back",
-    }),
   }),
   "hang-new-sign": Object.freeze({
     id: "ep2-new-sign",
@@ -40,10 +33,6 @@ export const EPISODE_TWO_JOBS = Object.freeze({
     deliveryId: "ep2-fresh-paint-sign",
     name: "The New Sign",
     brief: "Haul the freshly painted sign across the district and hang it where the old one fell.",
-    controls: Object.freeze({
-      accept: "Shoulder the new sign",
-      refuse: "Leave the sign to dry",
-    }),
   }),
 });
 
