@@ -10,14 +10,20 @@ import { describe, expect, it } from "vitest";
 // the snapshot's literal `true`) and the reduced-motion projection in
 // `feltRecognitionBeat.ts` (an `as` cast masking a widened return type).
 //
-// The compile-time pins in feltRecognitionBeat.test.ts (typed
-// assignments + `@ts-expect-error`) are invisible to vitest on their own.
-// This test runs the real compiler over the same config the CI step uses,
-// so a type regression anywhere under apps/web/src/aftersign — source or
-// test file — fails the vitest lane at runtime, not only a CI step.
+// The compile-time pins in apps/web/src/aftersign/feltRecognitionBeat.test.ts
+// (typed assignments + `@ts-expect-error`) are invisible to vitest on their
+// own. This test runs the real compiler over the same config the CI step
+// uses, so a type regression anywhere under apps/web/src/aftersign — source
+// or test file — fails the vitest lane (`npm run test:unit:aftersign`) at
+// runtime, not only a non-blocking CI step.
+//
+// Lives under aftersign/test/ (not aftersign/src/) because the location
+// guard requires new AFTERSIGN files under aftersign/, and aftersign/src is
+// typechecked by aftersign/tsconfig.json with `types: ["vite/client"]` only
+// (no node:* typings for spawnSync).
 
 const here = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(here, "../../../..");
+const repoRoot = resolve(here, "../..");
 const tsconfig = resolve(repoRoot, "aftersign/tsconfig.apps-web.json");
 const tscBin = createRequire(import.meta.url).resolve("typescript/bin/tsc");
 
