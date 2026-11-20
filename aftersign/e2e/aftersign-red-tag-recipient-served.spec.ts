@@ -194,5 +194,27 @@ test.describe("AFTERSIGN third remembering NPC — red-tag acknowledgment on the
       "data-aftersign-red-tag-recipient-count",
       "1",
     );
+
+    // #2910: `getAftersignStoryState(...).state.npcs` types the
+    // recipient entry's memory as the literal `redTagDeliveredToThirdNpc:
+    // true`. A second durable reload must rebuild exactly ONE entry from
+    // the save — not drop it (memory read back as false) and not append
+    // a duplicate (count "2").
+    await page.reload({ waitUntil: "load" });
+    await waitForReady(page);
+    await waitForBeat(page, "io-return-recognition");
+    const reloadedRecipientLine = page.locator("#aftersignRedTagRecipientLine");
+    await expect(reloadedRecipientLine).toHaveText(
+      "You brought the red tag yourself. I remember the route you carried to Saint Orra.",
+      { timeout: WAIT_MS },
+    );
+    await expect(reloadedRecipientLine).toHaveAttribute(
+      "data-aftersign-red-tag-recipient",
+      "recognizes-player",
+    );
+    await expect(reloadedRecipientLine).toHaveAttribute(
+      "data-aftersign-red-tag-recipient-count",
+      "1",
+    );
   });
 });

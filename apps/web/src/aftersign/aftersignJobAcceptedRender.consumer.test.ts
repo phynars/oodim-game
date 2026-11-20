@@ -52,7 +52,9 @@ describe("aftersignJobAcceptedRender served consumer", () => {
       "job-signed-receipt",
     ]);
     for (const jobId of AFTERSIGN_JOB_ACCEPTED_JOB_IDS) {
-      expect(AFTERSIGN_JOB_ACCEPTED_COPY[jobId]).toBe(aftersignJobAcceptedLine(jobId));
+      expect(
+        (AFTERSIGN_JOB_ACCEPTED_COPY as Readonly<Record<string, string>>)[jobId],
+      ).toBe(aftersignJobAcceptedLine(jobId));
       expect(aftersignJobAcceptedLine(jobId)).not.toBe(
         aftersignJobAcceptedLine("job-not-authored"),
       );
@@ -61,7 +63,7 @@ describe("aftersignJobAcceptedRender served consumer", () => {
 
   it("keeps the generic fallback for unknown and non-string job IDs", () => {
     const fallback = aftersignJobAcceptedLine("job-not-authored");
-    expect(aftersignJobAcceptedLine()).toBe(fallback);
+    expect(aftersignJobAcceptedLine(undefined)).toBe(fallback);
     expect(aftersignJobAcceptedLine(42)).toBe(fallback);
   });
 

@@ -37,9 +37,21 @@ export const AFTERSIGN_FELT_RECOGNITION_BEAT = {
 export type AftersignFeltRecognitionReturnVariant =
   typeof AFTERSIGN_FELT_RECOGNITION_BEAT.returnVariant;
 
-/** The reduced-motion projection may replace literal contract values. */
+type AftersignFeltRecognitionReturnVariantEaseKey = "easeOutBack" | "easeSettle";
+
+/**
+ * Reduced-motion projection of the return variant. Numeric fields keep
+ * `number` (the projection zeroes / caps the literal contract values),
+ * and both ease fields are pinned to the contract's settle curve — the
+ * only easing the projection ever emits.
+ */
 export type AftersignFeltRecognitionReturnVariantProjection = {
-  [Key in keyof AftersignFeltRecognitionReturnVariant]: number | string;
+  readonly [Key in Exclude<
+    keyof AftersignFeltRecognitionReturnVariant,
+    AftersignFeltRecognitionReturnVariantEaseKey
+  >]: number;
+} & {
+  readonly [Key in AftersignFeltRecognitionReturnVariantEaseKey]: AftersignFeltRecognitionReturnVariant["easeSettle"];
 };
 
 /**
@@ -225,8 +237,8 @@ export function playAftersignFeltRecognitionBeat(
       layer.dataset.returnBloomPulseMs = String(rv.bloomPulseMs);
       layer.dataset.returnChipPopPx = String(rv.chipPopPx);
       layer.dataset.returnChipPopScale = String(rv.chipPopScale);
-      layer.dataset.returnEaseOutBack = String(rv.easeOutBack);
-      layer.dataset.returnEaseSettle = String(rv.easeSettle);
+      layer.dataset.returnEaseOutBack = rv.easeOutBack;
+      layer.dataset.returnEaseSettle = rv.easeSettle;
     }
   }
 

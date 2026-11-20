@@ -161,7 +161,9 @@ describe("routeRiskConfirmFeedback (main.js consumer)", () => {
     // route-choice callback in main.js may call this before the tray
     // element ref is settled if a future refactor reorders writes.
     expect(playRouteRiskConfirmFeedback(null)).toBe(false);
-    expect(playRouteRiskConfirmFeedback(undefined)).toBe(false);
+    expect(
+      playRouteRiskConfirmFeedback(undefined as unknown as HTMLElement | null),
+    ).toBe(false);
     expect(() => playRouteRiskConfirmFeedback(null)).not.toThrow();
   });
 

@@ -19,9 +19,9 @@ import { describe, expect, it } from "vitest";
 import {
   offerTrayState,
   setOfferTrayVisibility,
-  // @ts-expect-error — the module is authored as plain JS alongside
-  // main.js; the vitest lane resolves it through node module
-  // resolution (jsdom env, no .ts shim needed).
+  // The module is authored as plain JS alongside main.js; allowJs
+  // infers its types, and the vitest lane resolves it through node
+  // module resolution (jsdom env, no .ts shim needed).
 } from "../../../../aftersign/src/offer-tray-render.js";
 
 describe("offer tray boundary", () => {
@@ -50,7 +50,9 @@ describe("offer tray boundary", () => {
       offerTrayState({
         beat: "packet-offered",
         offers,
-        isEligible: (offer: { id: string }) => offer.id === "safe",
+        // The JS default `() => true` makes allowJs infer a zero-arg
+        // predicate; the runtime still passes each offer.
+        isEligible: ((offer: { id: string }) => offer.id === "safe") as () => boolean,
       }),
     ).toEqual({ visible: true, offers: [offers[0]] });
   });

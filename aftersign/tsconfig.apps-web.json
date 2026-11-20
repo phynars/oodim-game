@@ -54,5 +54,5 @@
     "types": ["vite/client", "node"]
   },
   "include": ["../apps/web/src/aftersign/**/*.ts"],
-  "exclude": ["node_modules", "../apps/web/src/aftersign/**/*.test.ts"]
+  "exclude": ["node_modules"]
 }

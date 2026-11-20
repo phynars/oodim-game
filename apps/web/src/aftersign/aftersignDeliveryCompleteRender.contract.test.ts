@@ -8,7 +8,13 @@ import {
   aftersignDeliveryCompleteLine,
 } from "./aftersignDeliveryCompleteCopy.js";
 // @ts-ignore -- plain JS module without declarations.
-import { resolveIoDialogue } from "../../../../aftersign/src/ioDialogueResolver.js";
+import { resolveIoDialogue as resolveIoDialogueFull } from "../../../../aftersign/src/ioDialogueResolver.js";
+
+// allowJs infers every destructured key of the JS resolver as required;
+// this contract only feeds the packet-delivered branch's inputs.
+const resolveIoDialogue = resolveIoDialogueFull as unknown as (
+  input: Record<string, unknown>,
+) => unknown;
 
 // Re-review on PR #2247 (Soren Vask):
 //   1. The first draft resolved main.js via `new URL(..., import.meta.url)`

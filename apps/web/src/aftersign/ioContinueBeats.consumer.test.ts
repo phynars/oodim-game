@@ -74,7 +74,8 @@ describe("ioContinueBeats consumer (setIoReturnReason → getIoContinueBeats)", 
     // identity, not a fresh copy.
     expect(handoff).toBe(IO_NEXT_JOB_HANDOFF);
     expect(handoff.id).toBe(IO_CONTINUE_BEAT_IDS.NEXT_JOB_HANDOFF);
-    expect(handoff.objective).toMatch(/red tag/i);
+    expect(handoff).toHaveProperty("objective");
+    expect((handoff as typeof IO_NEXT_JOB_HANDOFF).objective).toMatch(/red tag/i);
   });
 
   it("re-projects the reply line but reuses the handoff when the posture changes", () => {

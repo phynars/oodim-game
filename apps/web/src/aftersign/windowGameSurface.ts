@@ -219,6 +219,17 @@ export type AftersignStoryStateSnapshot = {
      * renderers and harness consumers; no offer metadata is discarded.
      */
     offeredJobs: IoJobOffer[];
+    /**
+     * Present only after the player accepts Io's next job in the window
+     * game harness (`acceptNextJob`). The harness snapshot projects the
+     * accepted offer plus Orra's follow-up beat; consumers narrow the
+     * offer fields they read (`copy`, `consequenceLine`).
+     */
+    nextJob?: {
+      accepted: true;
+      offer: { id: string } & Record<string, unknown>;
+      beat: { id: string } & Record<string, unknown>;
+    };
   };
   /**
    * Scene block with the current beat alongside the scene id, so a
