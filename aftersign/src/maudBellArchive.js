@@ -82,8 +82,8 @@ export const renderMaudBellArchiveEnding = (
   card.style.maxHeight = "100%";
   card.style.overflowY = "auto";
 
-  const title = doc.createElement("strong");
-  title.textContent = "Act II — Bell Archive";
+  const title = doc.createElement("h2");
+  title.textContent = doorOpen && !doorChoice ? "Unlit Door" : doorChoice ? "Episode 1 has ended" : "Act II — Bell Archive";
   const bell = doc.createElement("p");
   bell.className = "episode-one-ending__bell";
   bell.textContent = "The Bell Archive rings.";
@@ -104,22 +104,34 @@ export const renderMaudBellArchiveEnding = (
   door.textContent = "Go to the Unlit Door";
   door.style.pointerEvents = "auto";
   const doorChoices = [
-    { id: "keep-official-record", label: "Keep the official record" },
-    { id: "protect-private-lie", label: "Protect the private lie" },
-    { id: "hang-new-sign", label: "Hang a new sign" },
+    { id: "keep-official-record", label: "Keep the official record", consequence: `Record ${ending.name} in the official archive; Maud carries the district's darkness.` },
+    { id: "protect-private-lie", label: "Protect the private lie", consequence: `Seal ${ending.name}'s private record; Maud loses the district light.` },
+    { id: "hang-new-sign", label: "Hang a new sign", consequence: `Replace ${ending.name}'s record with a new sign; Maud bears its false name.` },
   ];
   const showDoorChoices = () => {
+    title.textContent = doorChoice ? "Episode 1 has ended" : "Unlit Door";
     dialogue.textContent = ending.doorDialogue;
     card.setAttribute("data-unlit-door-open", "true");
     door.remove();
     if (doorChoice) {
       card.setAttribute("data-door-choice", doorChoice);
+      const selected = doorChoices.find((choice) => choice.id === doorChoice);
+      // Saved doorChoice values are always one of the three door ids; an
+      // unknown value renders no completion line rather than invented copy.
+      const completion = selected ? doc.createElement("p") : null;
+      if (completion) {
+        completion.className = "episode-one-completion__choice";
+        completion.textContent = `You chose: ${selected.label}. ${selected.consequence}`;
+      }
       if (ioFinalDialogue) {
         const finalLine = doc.createElement("p");
         finalLine.className = "maud-bell-archive__io-final";
         finalLine.setAttribute("data-io-final-id", ioFinalDialogue.id);
         finalLine.textContent = ioFinalDialogue.text;
         light.after(finalLine);
+        if (completion) finalLine.after(completion);
+      } else if (completion) {
+        light.after(completion);
       }
       return;
     }
@@ -128,23 +140,28 @@ export const renderMaudBellArchiveEnding = (
     // without a swipe (#2824).
     const choices = doc.createElement("div");
     choices.className = "maud-bell-archive__door-choices";
-    choices.style.display = "flex";
+    choices.style.display = "grid";
     choices.style.gap = "4px";
     choices.style.marginTop = "4px";
     for (const choice of doorChoices) {
+      const pair = doc.createElement("div");
       const button = doc.createElement("button");
       button.type = "button";
       button.setAttribute("data-choice-id", choice.id);
       button.textContent = choice.label;
       button.style.pointerEvents = "auto";
-      button.style.flex = "1 1 0";
-      button.style.minWidth = "0";
-      button.style.minHeight = "44px";
+      button.style.minHeight = "32px";
       button.style.padding = "2px 4px";
       button.style.fontSize = "12px";
       button.style.lineHeight = "1.15";
       button.addEventListener("click", () => onChooseDoor?.(choice.id));
-      choices.append(button);
+      const consequence = doc.createElement("p");
+      consequence.className = "maud-bell-archive__door-consequence";
+      consequence.textContent = choice.consequence;
+      consequence.style.margin = "0";
+      consequence.style.fontSize = "11px";
+      pair.append(button, consequence);
+      choices.append(pair);
     }
     light.after(choices);
     if (card.isConnected && typeof card.scrollIntoView === "function") {

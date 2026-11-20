@@ -339,6 +339,26 @@ async function carryRedTagToSaintOrra(page: Page): Promise<void> {
   await carry.click();
 }
 
+/**
+ * After the red-tag recall, Saint Orra offers the archive control
+ * (`data-orra-payback-action`, not a `data-choice-id` choice), then Maud
+ * offers three name buttons (`data-maud-name-choice`). Tap both visibly.
+ */
+async function carryNameToMaud(
+  page: Page,
+  nameChoice: "remembered-name" | "archive-decoy",
+): Promise<void> {
+  const carryName = page.locator(
+    'button[data-orra-payback-action="carry-name-to-bell-archive"]:not([disabled])',
+  );
+  await expect(carryName, "Saint Orra's archive control must be visible").toBeVisible({ timeout: WAIT_MS });
+  await carryName.click();
+  const name = page.locator(`button[data-maud-name-choice="${nameChoice}"]:not([disabled])`);
+  await expect(name, `Maud name button "${nameChoice}" must be visible`).toBeVisible({ timeout: WAIT_MS });
+  await name.click();
+  await expect(page.locator('button[data-choice-id="open-unlit-door"]')).toBeVisible({ timeout: WAIT_MS });
+}
+
 test.describe("Saint Orra red-tag recall", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
@@ -418,6 +438,44 @@ test.describe("Saint Orra red-tag recall", () => {
 
 test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
   test.describe.configure({ mode: "serial" });
+
+  test("shows Episode 1 completion and the visibly tapped door choice", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
+    await page.setViewportSize(PHONE_VIEWPORT);
+    const slot = `unlit-ending-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await waitForVersion(page);
+    await runToEnding(page, "sealed");
+    await carryRedTagToSaintOrra(page);
+    await carryNameToMaud(page, "archive-decoy");
+    await tapChoice(page, "open-unlit-door");
+    await tapChoice(page, "hang-new-sign");
+
+    const card = await readEndingCard(page);
+    await expect(card.getByRole("heading", { name: "Episode 1 has ended" })).toBeVisible();
+    await expect(card).toContainText("hung a new sign");
+    const box = await card.boundingBox();
+    expect(box).not.toBeNull();
+    if (box) expect(box.y + box.height).toBeLessThanOrEqual(PHONE_VIEWPORT.height);
+  });
+
+  test("does not claim an Unlit Door action the player did not tap", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
+    await page.setViewportSize(PHONE_VIEWPORT);
+    const slot = `unlit-no-false-memory-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await waitForVersion(page);
+    await runToEnding(page, "sealed");
+    await carryRedTagToSaintOrra(page);
+    await carryNameToMaud(page, "archive-decoy");
+    await tapChoice(page, "open-unlit-door");
+    await tapChoice(page, "protect-private-lie");
+
+    const card = await readEndingCard(page);
+    await expect(card).toContainText("protected the private lie");
+    await expect(card).not.toContainText("kept the official record");
+    await expect(card).not.toContainText("hung a new sign");
+  });
 
   test("TRUE ending: sealed packet + carried red tag → ending-bell-true, lit light, no false memory", async ({
     page,

@@ -130,6 +130,49 @@ const ids = (tag: string) => {
 test.describe("Durable Act II ending (#2726)", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
+  test("shows the named Unlit Door after a visible phone tap", async ({ page }) => {
+    test.setTimeout(240_000);
+    const { player, slot } = ids("unlit-door-heading");
+    await completeEnding(page, slot, player, DIM);
+    await tapVisible(page, 'button[data-choice-id="open-unlit-door"]');
+
+    const card = page.locator(`[data-ending-id="${DIM.endingId}"]`);
+    await expect(card.getByRole("heading", { name: "Unlit Door" })).toBeVisible();
+    await expect(card).not.toContainText("Act II — Bell Archive");
+    // The door tap makes the terminal renderer hide every earlier story
+    // control. #deliverButton must exist so the loop cannot pass vacuously.
+    await expect(page.locator("#deliverButton")).toHaveCount(1);
+    for (const selector of [
+      "#packetButton",
+      "#deliverButton",
+      "#offeredJobs button",
+      "#routeChoice button",
+      "#orraPaybackAction",
+    ]) {
+      for (const control of await page.locator(selector).all()) {
+        await expect(control, `${selector} must be hidden at the Unlit Door`).toBeHidden();
+      }
+    }
+  });
+
+  test("shows all three visible record and Maud consequences at the Unlit Door", async ({ page }) => {
+    test.setTimeout(240_000);
+    const { player, slot } = ids("unlit-door-consequences");
+    await completeEnding(page, slot, player, DIM);
+    await tapVisible(page, 'button[data-choice-id="open-unlit-door"]');
+
+    const card = page.locator(`[data-ending-id="${DIM.endingId}"]`);
+    const choices = card.locator('button[data-choice-id="keep-official-record"], button[data-choice-id="protect-private-lie"], button[data-choice-id="hang-new-sign"]');
+    await expect(choices).toHaveCount(3);
+    for (const choice of await choices.all()) {
+      await expect(choice).toBeVisible();
+      const box = await choice.boundingBox();
+      expect(box).not.toBeNull();
+      if (box) expect(box.y + box.height).toBeLessThanOrEqual(PHONE_VIEWPORT.height);
+      await expect(choice.locator("xpath=following-sibling::*[1]")).toBeVisible();
+    }
+  });
+
   test("restores the same Act II ending outcome and name in a fresh browser context", async ({ page, browser }) => {
     test.setTimeout(240_000);
     const { player, slot } = ids("name");
