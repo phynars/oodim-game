@@ -273,7 +273,10 @@ test.describe("Durable Act II ending (#2726)", () => {
       await expect(card).toHaveAttribute("data-door-choice", doorChoice);
       await expect(card.locator(`[data-io-final-id="io-final-sealed-${doorChoice === "keep-official-record" ? "official" : doorChoice === "protect-private-lie" ? "private" : "sign"}"]`)).toBeVisible();
       await expect(doorChoices).toHaveCount(0);
-      await expect(page.locator("#episodeOneEnding button:visible")).toHaveCount(0);
+      // PR #2909: the only control left on the committed Act II card is the
+      // Episode 2 continuation; no other story button may remain visible.
+      await expect(page.locator("#episodeOneEnding button:visible:not(#beginEpisodeTwo)")).toHaveCount(0);
+      await expect(page.locator("#episodeOneEnding #beginEpisodeTwo")).toBeVisible();
       await expect(page.locator("#resetButton")).toBeVisible();
       await expect(async () => {
         const { context, page: returning } = await openFreshContext(browser, slot, player);

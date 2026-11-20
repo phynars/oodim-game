@@ -61,7 +61,7 @@ export const resolveEpisodeOneEnding = ({
 };
 
 /** Render the chosen ending card into the served page. */
-export const renderEpisodeOneEnding = (doc, ending) => {
+export const renderEpisodeOneEnding = (doc, ending, { onBeginEpisodeTwo } = {}) => {
   if (!doc || typeof doc.getElementById !== "function" || !ending) {
     return null;
   }
@@ -104,6 +104,14 @@ export const renderEpisodeOneEnding = (doc, ending) => {
       ? "South district light: out"
       : "South district light: lit";
   card.append(title, bell, outcome, recall, districtLight);
+  if (typeof onBeginEpisodeTwo === "function") {
+    const beginEpisodeTwo = doc.createElement("button");
+    beginEpisodeTwo.type = "button";
+    beginEpisodeTwo.id = "beginEpisodeTwo";
+    beginEpisodeTwo.textContent = "Begin Episode 2";
+    beginEpisodeTwo.addEventListener("click", onBeginEpisodeTwo);
+    card.appendChild(beginEpisodeTwo);
+  }
   host.appendChild(card);
 
   // The line surface belongs to the active beat. Once its outcome has been
