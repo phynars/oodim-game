@@ -1210,6 +1210,7 @@ const state = {
     // so the first outcome is recorded once and saved separately.
     firstPacketSealed:
       typeof stored?.story?.firstPacketSealed === "boolean" ? stored.story.firstPacketSealed : null,
+    episodeTwoNightPost: stored?.story?.episodeTwoNightPost === true,
   },
   delivery: {
     // #2267: restore the saved job so a reload after "Ask for next job"
@@ -1620,10 +1621,61 @@ const getAudioController = () => {
   return audioController;
 };
 
+const NIGHT_POST_DOOR_LABELS = {
+  "keep-official-record": "Keep the official record",
+  "protect-private-lie": "Protect the private lie",
+  "hang-new-sign": "Hang a new sign",
+};
+
+const beginEpisodeTwo = async () => {
+  // The Night Post may only continue a recorded Unlit Door decision; it
+  // never synthesizes a choice for the player.
+  if (!state.story.doorChoice) return;
+  state.story.episodeTwoNightPost = true;
+  markStateDirty();
+  await persistAuthoritative({ dirty: true });
+  renderText();
+  publishState();
+};
+
+// PR #2909 F1: renderText() runs every frame, so lineForBeat() must not
+// rebuild an Act II card that already matches durable state — replacing it
+// each frame detached #beginEpisodeTwo before a tap could land.
+const maudEndingCardIsCurrent = (doc) => {
+  const host = doc.getElementById("episodeOneEnding");
+  if (!host || typeof host.querySelector !== "function") return false;
+  const card = host.querySelector(`[data-ending-id="${state.story.maudBellArchiveEndingId}"]`);
+  if (!card) return false;
+  const doorOpen = state.story.maudBellArchiveDoorOpen === true;
+  if ((card.getAttribute("data-unlit-door-open") === "true") !== doorOpen) return false;
+  if ((card.getAttribute("data-door-choice") ?? null) !== (state.story.doorChoice ?? null)) return false;
+  const wantsBegin = Boolean(state.story.doorChoice);
+  return Boolean(card.querySelector("#beginEpisodeTwo")) === wantsBegin;
+};
+
 const lineForBeat = () => {
+  if (state.story.episodeTwoNightPost) {
+    const host = typeof document !== "undefined" ? document.getElementById("episodeOneEnding") : null;
+    if (host && host.getAttribute("data-continuation") !== "night-post") {
+      host.replaceChildren();
+      host.setAttribute("data-continuation", "night-post");
+      const heading = document.createElement("strong");
+      heading.textContent = "Night Post";
+      const recall = document.createElement("p");
+      recall.setAttribute("data-night-post-door-choice", state.story.doorChoice ?? "");
+      recall.textContent = `Io remembers the door you chose: ${NIGHT_POST_DOOR_LABELS[state.story.doorChoice] ?? ""}.`;
+      host.append(heading, recall);
+    }
+    state.npcs.io.lastLine = `Night Post. I remember the door you chose: ${NIGHT_POST_DOOR_LABELS[state.story.doorChoice] ?? ""}.`;
+    return state.npcs.io.lastLine;
+  }
   // Ending cards remain DOM-owned composition concerns.
   if (state.story.maudBellArchiveEndingId) {
-    if (typeof document !== "undefined" && !hasLiveMaudChoices(document)) {
+    if (
+      typeof document !== "undefined"
+      && !hasLiveMaudChoices(document)
+      && !maudEndingCardIsCurrent(document)
+    ) {
       renderMaudBellArchive(document, {
         storedName: state.player.name,
         endingId: state.story.maudBellArchiveEndingId,
@@ -1636,6 +1688,7 @@ const lineForBeat = () => {
         }),
         onOpenDoor: () => { void choose("open-unlit-door"); },
         onChooseDoor: (choiceId) => { void choose(choiceId); },
+        onBeginEpisodeTwo: state.story.doorChoice ? beginEpisodeTwo : undefined,
       });
     }
     state.npcs.io.lastLine = "";
@@ -4571,6 +4624,7 @@ const choose = async (choiceId) => {
       }),
       onOpenDoor: () => { void choose("open-unlit-door"); },
       onChooseDoor: (nextChoiceId) => { void choose(nextChoiceId); },
+      onBeginEpisodeTwo: beginEpisodeTwo,
     });
     publishState();
     return;
@@ -5617,9 +5671,14 @@ const resetSliceSave = async () => {
   // fresh must clear it too, or a replayed ending renders it already chosen.
   state.story.doorChoice = null;
   state.story.firstPacketSealed = null;
+  // PR #2909 F1: Start fresh must leave the Night Post too — otherwise
+  // lineForBeat keeps taking the continuation branch and persistence saves
+  // episodeTwoNightPost:true again.
+  state.story.episodeTwoNightPost = false;
   {
     const endingHost = document.getElementById("episodeOneEnding");
     while (endingHost?.firstChild) endingHost.removeChild(endingHost.firstChild);
+    endingHost?.removeAttribute("data-continuation");
   }
   state.player = {
     id: bootstrapPlayerId,

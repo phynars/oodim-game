@@ -64,7 +64,7 @@ export const renderMaudBellArchiveEnding = (
   doc,
   host,
   endingOrChoice,
-  { onOpenDoor, onChooseDoor, doorOpen = false, doorChoice = null, ioFinalDialogue = null } = {},
+  { onOpenDoor, onChooseDoor, onBeginEpisodeTwo, doorOpen = false, doorChoice = null, ioFinalDialogue = null } = {},
 ) => {
   const ending = endingOrChoice?.light
     ? endingOrChoice
@@ -133,6 +133,16 @@ export const renderMaudBellArchiveEnding = (
       } else if (completion) {
         light.after(completion);
       }
+      if (typeof onBeginEpisodeTwo === "function") {
+        const beginEpisodeTwo = doc.createElement("button");
+        beginEpisodeTwo.type = "button";
+        beginEpisodeTwo.id = "beginEpisodeTwo";
+        beginEpisodeTwo.textContent = "Begin Episode 2";
+        beginEpisodeTwo.style.pointerEvents = "auto";
+        beginEpisodeTwo.style.minHeight = "44px";
+        beginEpisodeTwo.addEventListener("click", onBeginEpisodeTwo);
+        card.appendChild(beginEpisodeTwo);
+      }
       return;
     }
     // PR #2880 F3: one compact row in the slot the door button vacated, so
@@ -189,6 +199,12 @@ export const renderMaudBellArchiveEnding = (
   } else if (typeof outcome.scrollIntoView === "function") {
     outcome.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
+  // The Begin Episode 2 control is the card's last row; bring it inside the
+  // card's own scrollport so the phone player can tap it without a swipe.
+  const beginControl = typeof card.querySelector === "function" ? card.querySelector("#beginEpisodeTwo") : null;
+  if (beginControl && typeof beginControl.scrollIntoView === "function") {
+    beginControl.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
   return card;
 };
 
@@ -236,7 +252,7 @@ export const hasLiveMaudChoices = (doc) => {
 /** Render Maud's name-selection beat into a supplied scene host. */
 export const renderMaudBellArchive = (
   doc,
-  { storedName, endingId, endingName, doorOpen = false, doorChoice = null, ioFinalDialogue = null, onSelect, onOpenDoor, onChooseDoor } = {},
+  { storedName, endingId, endingName, doorOpen = false, doorChoice = null, ioFinalDialogue = null, onSelect, onOpenDoor, onChooseDoor, onBeginEpisodeTwo } = {},
 ) => {
   if (!doc || typeof doc.createElement !== "function") return null;
   const host = doc.getElementById("episodeOneEnding") || doc.getElementById("line");
@@ -256,6 +272,7 @@ export const renderMaudBellArchive = (
     return renderMaudBellArchiveEnding(doc, host, restoredEnding, {
       onOpenDoor,
       onChooseDoor,
+      onBeginEpisodeTwo,
       doorOpen,
       doorChoice,
       ioFinalDialogue,
