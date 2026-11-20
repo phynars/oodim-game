@@ -64,7 +64,7 @@ export const renderMaudBellArchiveEnding = (
   doc,
   host,
   endingOrChoice,
-  { onOpenDoor, onChooseDoor, doorOpen = false, doorChoice = null, ioFinalDialogue = null } = {},
+  { onOpenDoor, onChooseDoor, onBeginEpisodeTwo, doorOpen = false, doorChoice = null, ioFinalDialogue = null } = {},
 ) => {
   const ending = endingOrChoice?.light
     ? endingOrChoice
@@ -120,6 +120,14 @@ export const renderMaudBellArchiveEnding = (
         finalLine.setAttribute("data-io-final-id", ioFinalDialogue.id);
         finalLine.textContent = ioFinalDialogue.text;
         light.after(finalLine);
+      }
+      if (typeof onBeginEpisodeTwo === "function") {
+        const beginEpisodeTwo = doc.createElement("button");
+        beginEpisodeTwo.type = "button";
+        beginEpisodeTwo.id = "beginEpisodeTwo";
+        beginEpisodeTwo.textContent = "Begin Episode 2";
+        beginEpisodeTwo.addEventListener("click", onBeginEpisodeTwo);
+        card.appendChild(beginEpisodeTwo);
       }
       return;
     }

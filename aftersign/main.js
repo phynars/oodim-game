@@ -1210,6 +1210,7 @@ const state = {
     // so the first outcome is recorded once and saved separately.
     firstPacketSealed:
       typeof stored?.story?.firstPacketSealed === "boolean" ? stored.story.firstPacketSealed : null,
+    episodeTwoNightPost: stored?.story?.episodeTwoNightPost === true,
   },
   delivery: {
     // #2267: restore the saved job so a reload after "Ask for next job"
@@ -1620,7 +1621,30 @@ const getAudioController = () => {
   return audioController;
 };
 
+const beginEpisodeTwo = async () => {
+  // The Night Post may only continue a recorded Unlit Door decision; it
+  // never synthesizes a choice for the player.
+  if (!state.story.doorChoice) return;
+  state.story.episodeTwoNightPost = true;
+  markStateDirty();
+  await persistAuthoritative({ dirty: true });
+  renderText();
+  publishState();
+};
+
 const lineForBeat = () => {
+  if (state.story.episodeTwoNightPost) {
+    const host = typeof document !== "undefined" ? document.getElementById("episodeOneEnding") : null;
+    if (host && host.getAttribute("data-continuation") !== "night-post") {
+      host.replaceChildren();
+      host.setAttribute("data-continuation", "night-post");
+      const heading = document.createElement("strong");
+      heading.textContent = "Night Post";
+      host.appendChild(heading);
+    }
+    state.npcs.io.lastLine = `Night Post. I remember the door you chose: ${state.story.doorChoice}.`;
+    return state.npcs.io.lastLine;
+  }
   // Ending cards remain DOM-owned composition concerns.
   if (state.story.maudBellArchiveEndingId) {
     if (typeof document !== "undefined" && !hasLiveMaudChoices(document)) {
@@ -1636,6 +1660,7 @@ const lineForBeat = () => {
         }),
         onOpenDoor: () => { void choose("open-unlit-door"); },
         onChooseDoor: (choiceId) => { void choose(choiceId); },
+        onBeginEpisodeTwo: state.story.doorChoice ? beginEpisodeTwo : undefined,
       });
     }
     state.npcs.io.lastLine = "";
