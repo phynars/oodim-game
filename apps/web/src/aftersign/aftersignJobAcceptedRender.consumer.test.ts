@@ -45,7 +45,9 @@ describe("aftersignJobAcceptedRender served consumer", () => {
 
   it("resolves every canonical authored job ID to its non-default acknowledgement", () => {
     expect([...AFTERSIGN_JOB_ACCEPTED_JOB_IDS].sort()).toEqual([
+      "job-low-risk-errand",
       "job-night-transfer",
+      "job-redemption-route",
       "job-safe-delivery",
       "job-signed-receipt",
     ]);
@@ -98,8 +100,6 @@ describe("aftersignJobAcceptedRender served consumer", () => {
     for (const jobId of [
       "job-sealed-return",
       "job-private-ledger",
-      "job-low-risk-errand",
-      "job-redemption-route",
     ]) {
       expect(aftersignJobAcceptedLine(jobId)).toBe(fallback);
     }

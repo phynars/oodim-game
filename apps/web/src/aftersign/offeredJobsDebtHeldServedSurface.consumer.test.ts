@@ -184,6 +184,47 @@ describe("#offeredJobs debt-held served-surface wiring (derives from Io memory +
       ).toEqual({ debtHeld: 2 });
     });
 
+    it("derives every non-legacy offer branch from durable delivery and route facts", () => {
+      const routeFact = (object: string) => ({
+        kind: NPC_MEMORY_FACT_KIND.ROUTE_ATTENTION,
+        object,
+      });
+
+      // PR #2890 F1: sealed + "I listened" is the played first-delivery
+      // path — it must stay on the completed set.
+      expect(offeredJobsMemoryFromIoMemory([
+        buildSealedFact(),
+        routeFact(NPC_MEMORY_OBJECT.ROUTE_DONE),
+      ])).toEqual({ priorOutcome: "completed" });
+      expect(surfaceOfferIdsFor([
+        buildSealedFact(),
+        routeFact(NPC_MEMORY_OBJECT.ROUTE_DONE),
+      ])).toEqual(["job-night-transfer", "job-signed-receipt"]);
+      // Opened + "I listened" stays debt-held.
+      expect(offeredJobsMemoryFromIoMemory([
+        buildOpenedFact(),
+        routeFact(NPC_MEMORY_OBJECT.ROUTE_DONE),
+      ])).toEqual({ debtHeld: 1 });
+
+      expect(offeredJobsMemoryFromIoMemory([
+        buildSealedFact(),
+        routeFact(NPC_MEMORY_OBJECT.ROUTE_SKIPPED),
+      ])).toEqual({ trustPosture: "guarded" });
+      expect(surfaceOfferIdsFor([
+        buildSealedFact(),
+        routeFact(NPC_MEMORY_OBJECT.ROUTE_SKIPPED),
+      ])).toEqual(["job-low-risk-errand"]);
+
+      expect(offeredJobsMemoryFromIoMemory([
+        buildOpenedFact(),
+        routeFact(NPC_MEMORY_OBJECT.ROUTE_SKIPPED),
+      ])).toEqual({ priorOutcome: "failed" });
+      expect(surfaceOfferIdsFor([
+        buildOpenedFact(),
+        routeFact(NPC_MEMORY_OBJECT.ROUTE_SKIPPED),
+      ])).toEqual(["job-redemption-route"]);
+    });
+
     it("prefers the sealed override when Io remembers BOTH — a proven courier is not demoted by a stale wax debt", () => {
       // Override order pin — must match `selectedJobIds` in
       // computeOfferedJobs.ts: trusted > completed > guarded > failed
