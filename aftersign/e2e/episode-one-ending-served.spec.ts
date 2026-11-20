@@ -339,6 +339,26 @@ async function carryRedTagToSaintOrra(page: Page): Promise<void> {
   await carry.click();
 }
 
+/**
+ * After the red-tag recall, Saint Orra offers the archive control
+ * (`data-orra-payback-action`, not a `data-choice-id` choice), then Maud
+ * offers three name buttons (`data-maud-name-choice`). Tap both visibly.
+ */
+async function carryNameToMaud(
+  page: Page,
+  nameChoice: "remembered-name" | "archive-decoy",
+): Promise<void> {
+  const carryName = page.locator(
+    'button[data-orra-payback-action="carry-name-to-bell-archive"]:not([disabled])',
+  );
+  await expect(carryName, "Saint Orra's archive control must be visible").toBeVisible({ timeout: WAIT_MS });
+  await carryName.click();
+  const name = page.locator(`button[data-maud-name-choice="${nameChoice}"]:not([disabled])`);
+  await expect(name, `Maud name button "${nameChoice}" must be visible`).toBeVisible({ timeout: WAIT_MS });
+  await name.click();
+  await expect(page.locator('button[data-choice-id="open-unlit-door"]')).toBeVisible({ timeout: WAIT_MS });
+}
+
 test.describe("Saint Orra red-tag recall", () => {
   test.use({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
 
@@ -427,8 +447,7 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     await waitForVersion(page);
     await runToEnding(page, "sealed");
     await carryRedTagToSaintOrra(page);
-    await tapChoice(page, "carry-name-to-bell-archive");
-    await tapChoice(page, "archive-decoy");
+    await carryNameToMaud(page, "archive-decoy");
     await tapChoice(page, "open-unlit-door");
     await tapChoice(page, "hang-new-sign");
 
@@ -448,8 +467,7 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     await waitForVersion(page);
     await runToEnding(page, "sealed");
     await carryRedTagToSaintOrra(page);
-    await tapChoice(page, "carry-name-to-bell-archive");
-    await tapChoice(page, "archive-decoy");
+    await carryNameToMaud(page, "archive-decoy");
     await tapChoice(page, "open-unlit-door");
     await tapChoice(page, "protect-private-lie");
 

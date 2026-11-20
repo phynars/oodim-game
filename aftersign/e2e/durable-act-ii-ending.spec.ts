@@ -139,8 +139,19 @@ test.describe("Durable Act II ending (#2726)", () => {
     const card = page.locator(`[data-ending-id="${DIM.endingId}"]`);
     await expect(card.getByRole("heading", { name: "Unlit Door" })).toBeVisible();
     await expect(card).not.toContainText("Act II — Bell Archive");
-    for (const control of await page.locator('#packetButton, #deliverButton, #offeredJobs button, #routeChoice button').all()) {
-      await expect(control).toBeHidden();
+    // The door tap makes the terminal renderer hide every earlier story
+    // control. #deliverButton must exist so the loop cannot pass vacuously.
+    await expect(page.locator("#deliverButton")).toHaveCount(1);
+    for (const selector of [
+      "#packetButton",
+      "#deliverButton",
+      "#offeredJobs button",
+      "#routeChoice button",
+      "#orraPaybackAction",
+    ]) {
+      for (const control of await page.locator(selector).all()) {
+        await expect(control, `${selector} must be hidden at the Unlit Door`).toBeHidden();
+      }
     }
   });
 

@@ -83,9 +83,12 @@ export const createTerminalEndingRenderer = ({
     // once its Unlit Door choice is recorded. Keep its card readable while
     // removing every remaining story control; only the persistent Start
     // fresh control outside this renderer remains actionable.
+    // #2904 AC-1: once the player opens the Unlit Door, the card is the
+    // Unlit Door screen; earlier story controls must not stay on screen.
     const hasTerminalEpisodeEnd = Boolean(
       state.story.endingId
-      || (state.story.maudBellArchiveEndingId && state.story.doorChoice),
+      || (state.story.maudBellArchiveEndingId
+        && (state.story.doorChoice || state.story.maudBellArchiveDoorOpen === true)),
     );
     if (hasTerminalEpisodeEnd) {
       for (const node of endingHideableControls()) {

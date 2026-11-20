@@ -383,7 +383,11 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       try {
         const restored = returning.locator(`[data-ending-id="${scenario.endingId}"]`);
         await expect(restored).toBeVisible({ timeout: WAIT_MS });
-        await expect(restored).toContainText("Act II — Bell Archive");
+        // The door was opened before reload, so the restored card is the
+        // named Unlit Door screen (#2904 AC-1), not the Act II title.
+        await expect(restored).toHaveAttribute("data-unlit-door-open", "true");
+        await expect(restored).toContainText("Unlit Door");
+        await expect(restored).not.toContainText("Act II — Bell Archive");
         await expect(restored).toContainText(scenario.endingLine);
         await expect(returning.locator("[data-maud-name-choice]")).toHaveCount(0);
       } finally {
