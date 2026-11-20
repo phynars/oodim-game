@@ -1621,6 +1621,12 @@ const getAudioController = () => {
   return audioController;
 };
 
+const NIGHT_POST_DOOR_LABELS = {
+  "keep-official-record": "Keep the official record",
+  "protect-private-lie": "Protect the private lie",
+  "hang-new-sign": "Hang a new sign",
+};
+
 const beginEpisodeTwo = async () => {
   // The Night Post may only continue a recorded Unlit Door decision; it
   // never synthesizes a choice for the player.
@@ -1640,9 +1646,12 @@ const lineForBeat = () => {
       host.setAttribute("data-continuation", "night-post");
       const heading = document.createElement("strong");
       heading.textContent = "Night Post";
-      host.appendChild(heading);
+      const recall = document.createElement("p");
+      recall.setAttribute("data-night-post-door-choice", state.story.doorChoice ?? "");
+      recall.textContent = `Io remembers the door you chose: ${NIGHT_POST_DOOR_LABELS[state.story.doorChoice] ?? ""}.`;
+      host.append(heading, recall);
     }
-    state.npcs.io.lastLine = `Night Post. I remember the door you chose: ${state.story.doorChoice}.`;
+    state.npcs.io.lastLine = `Night Post. I remember the door you chose: ${NIGHT_POST_DOOR_LABELS[state.story.doorChoice] ?? ""}.`;
     return state.npcs.io.lastLine;
   }
   // Ending cards remain DOM-owned composition concerns.
@@ -4596,6 +4605,7 @@ const choose = async (choiceId) => {
       }),
       onOpenDoor: () => { void choose("open-unlit-door"); },
       onChooseDoor: (nextChoiceId) => { void choose(nextChoiceId); },
+      onBeginEpisodeTwo: beginEpisodeTwo,
     });
     publishState();
     return;
