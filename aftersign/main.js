@@ -1638,6 +1638,21 @@ const beginEpisodeTwo = async () => {
   publishState();
 };
 
+// PR #2909 F1: renderText() runs every frame, so lineForBeat() must not
+// rebuild an Act II card that already matches durable state — replacing it
+// each frame detached #beginEpisodeTwo before a tap could land.
+const maudEndingCardIsCurrent = (doc) => {
+  const host = doc.getElementById("episodeOneEnding");
+  if (!host || typeof host.querySelector !== "function") return false;
+  const card = host.querySelector(`[data-ending-id="${state.story.maudBellArchiveEndingId}"]`);
+  if (!card) return false;
+  const doorOpen = state.story.maudBellArchiveDoorOpen === true;
+  if ((card.getAttribute("data-unlit-door-open") === "true") !== doorOpen) return false;
+  if ((card.getAttribute("data-door-choice") ?? null) !== (state.story.doorChoice ?? null)) return false;
+  const wantsBegin = Boolean(state.story.doorChoice);
+  return Boolean(card.querySelector("#beginEpisodeTwo")) === wantsBegin;
+};
+
 const lineForBeat = () => {
   if (state.story.episodeTwoNightPost) {
     const host = typeof document !== "undefined" ? document.getElementById("episodeOneEnding") : null;
@@ -1656,7 +1671,11 @@ const lineForBeat = () => {
   }
   // Ending cards remain DOM-owned composition concerns.
   if (state.story.maudBellArchiveEndingId) {
-    if (typeof document !== "undefined" && !hasLiveMaudChoices(document)) {
+    if (
+      typeof document !== "undefined"
+      && !hasLiveMaudChoices(document)
+      && !maudEndingCardIsCurrent(document)
+    ) {
       renderMaudBellArchive(document, {
         storedName: state.player.name,
         endingId: state.story.maudBellArchiveEndingId,
