@@ -156,4 +156,26 @@ describe("AFTERSIGN_FELT_RECOGNITION_BEAT", () => {
       easeSettle: "cubic-bezier(0.22, 1, 0.36, 1)",
     });
   });
+
+  it("types the reduced-motion projection narrowly: numbers stay numbers, eases stay the settle literal (#2910)", () => {
+    const projected = projectReturnVariantForReducedMotion();
+
+    // Compile-time pins (checked by `npm run typecheck:aftersign:apps-web`,
+    // which now covers *.test.ts): a widened `number | string` field
+    // would fail these assignments.
+    const lift: number = projected.cardLiftPx;
+    const settle: typeof AFTERSIGN_FELT_RECOGNITION_BEAT.returnVariant.easeSettle =
+      projected.easeOutBack;
+    // @ts-expect-error — the projection never emits the overshoot curve.
+    const overshoot: typeof AFTERSIGN_FELT_RECOGNITION_BEAT.returnVariant.easeOutBack =
+      projected.easeOutBack;
+
+    expect(typeof lift).toBe("number");
+    expect(settle).toBe(AFTERSIGN_FELT_RECOGNITION_BEAT.returnVariant.easeSettle);
+    expect(overshoot).not.toBe(AFTERSIGN_FELT_RECOGNITION_BEAT.returnVariant.easeOutBack);
+    for (const key of Object.keys(projected) as Array<keyof typeof projected>) {
+      const expected = key.startsWith("ease") ? "string" : "number";
+      expect(typeof projected[key]).toBe(expected);
+    }
+  });
 });

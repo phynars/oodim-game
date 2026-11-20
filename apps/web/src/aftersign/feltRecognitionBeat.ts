@@ -37,6 +37,23 @@ export const AFTERSIGN_FELT_RECOGNITION_BEAT = {
 export type AftersignFeltRecognitionReturnVariant =
   typeof AFTERSIGN_FELT_RECOGNITION_BEAT.returnVariant;
 
+type AftersignFeltRecognitionReturnVariantEaseKey = "easeOutBack" | "easeSettle";
+
+/**
+ * Reduced-motion projection of the return variant. Numeric fields keep
+ * `number` (the projection zeroes / caps the literal contract values),
+ * and both ease fields are pinned to the contract's settle curve — the
+ * only easing the projection ever emits.
+ */
+export type AftersignFeltRecognitionReturnVariantProjection = {
+  readonly [Key in Exclude<
+    keyof AftersignFeltRecognitionReturnVariant,
+    AftersignFeltRecognitionReturnVariantEaseKey
+  >]: number;
+} & {
+  readonly [Key in AftersignFeltRecognitionReturnVariantEaseKey]: AftersignFeltRecognitionReturnVariant["easeSettle"];
+};
+
 /**
  * Reduced-motion projection of the return-variant numbers. Motion-heavy
  * fields collapse to 0 (lift / camera nod / shake / chip travel); tempo
@@ -47,7 +64,7 @@ export type AftersignFeltRecognitionReturnVariant =
  */
 export function projectReturnVariantForReducedMotion(
   variant: AftersignFeltRecognitionReturnVariant = AFTERSIGN_FELT_RECOGNITION_BEAT.returnVariant,
-): AftersignFeltRecognitionReturnVariant {
+): AftersignFeltRecognitionReturnVariantProjection {
   return {
     anticipationMs: variant.anticipationMs,
     cardLiftPx: 0,
@@ -59,7 +76,7 @@ export function projectReturnVariantForReducedMotion(
     chipPopScale: 1,
     easeOutBack: variant.easeSettle,
     easeSettle: variant.easeSettle,
-  } as AftersignFeltRecognitionReturnVariant;
+  };
 }
 
 export type AftersignFeltRecognitionBeat = typeof AFTERSIGN_FELT_RECOGNITION_BEAT;

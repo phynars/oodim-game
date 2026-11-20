@@ -260,7 +260,11 @@ describe("routeRiskMemory persistence round-trip (drives the served buildPersist
           lastLineMemoryRefs: [],
         },
       },
-      save: { revision: 0, dirty: false },
+      save: { revision: 0, dirty: false } as {
+        revision: number;
+        dirty: boolean;
+        lastPersistedAt?: number;
+      },
     };
     const persistedBlobs: unknown[] = [];
     const helpers = createPersistHelpers({

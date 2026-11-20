@@ -29,8 +29,6 @@ import {
 const FAILED_LINE_VERBATIM =
   "Io remembers the split seal you brought back. Its torn edge is still caught beneath her lamp. The next packet stays on the hook until you mend this loss. Bring the tear to Io now, before its damage follows the next delivery.";
 
-const FRAGILE_LINE_VERBATIM =
-  "Io remembers how carefully you carried the fragile packet. It still came back torn. She leaves the next one with you: mend what was torn before you carry again.";
 
 describe("failed-route recall names what the dark actually took (#2427)", () => {
   it("the failed entry matches the authored sentence verbatim", () => {

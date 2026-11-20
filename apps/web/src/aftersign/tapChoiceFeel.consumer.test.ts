@@ -127,7 +127,6 @@ describe("tapChoiceFeel consumer (getTapChoiceFeelReport wiring)", () => {
   });
 
   it("flags a surface that is undersized on the height axis", () => {
-    const min = AFTERSIGN_TOUCH_FEEL.minimumTargetPx;
     mountTapChoice("opened", 60, 32); // height short by 12
 
     const report = window.__game?.getTapChoiceFeelReport();

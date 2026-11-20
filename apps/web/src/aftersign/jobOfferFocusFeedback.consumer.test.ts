@@ -106,7 +106,9 @@ describe("jobOfferFocusFeedback (main.js consumer)", () => {
   it("calls button.animate with the shipped boxShadow keyframe, 180ms duration, and cubic-bezier easing", () => {
     const button = document.createElement("button");
     document.body.append(button);
-    const animate = vi.fn(() => ({ cancel: vi.fn() }));
+    const animate = vi.fn((_keyframes: unknown, _options?: unknown) => ({
+      cancel: vi.fn(),
+    }));
     (button as unknown as { animate: typeof animate }).animate = animate;
 
     playJobOfferFocusFeedback(button);

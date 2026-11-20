@@ -48,12 +48,12 @@ function makeMatchMedia(matches: boolean): (query: string) => MediaQueryList {
       onchange: null,
       addListener: () => {},
       removeListener: () => {},
-      addEventListener: (_type, listener) => {
+      addEventListener: (_type: string, listener: unknown) => {
         if (typeof listener === "function") {
           listeners.add(listener as (event: MediaQueryListEvent) => void);
         }
       },
-      removeEventListener: (_type, listener) => {
+      removeEventListener: (_type: string, listener: unknown) => {
         if (typeof listener === "function") {
           listeners.delete(listener as (event: MediaQueryListEvent) => void);
         }

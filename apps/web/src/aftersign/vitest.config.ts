@@ -53,6 +53,8 @@ export default defineConfig({
       "aftersign/src/presentation/ioReturnActionFeedbackController.test.js",
       // #2766 — per-player memory replica must not seed a cold slot
       "aftersign/src/runtime/playerMemory.test.js",
+      // #2910 — runs tsc over aftersign/tsconfig.apps-web.json inside vitest
+      "aftersign/test/appsWebTypecheck.test.ts",
     ],
   },
 });
