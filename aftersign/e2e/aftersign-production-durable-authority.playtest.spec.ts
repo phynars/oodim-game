@@ -92,7 +92,11 @@ test.describe("production durable authority", () => {
     const slot = `prod-durable-authority-${Date.now()}`;
     const base = productionUrl!.replace(/\/+$/, "");
     const separator = base.includes("?") ? "&" : "?";
-    const url = `${base}${separator}slot=${slot}`;
+    // Pin the player id in the URL: `clearLocalStorage` below wipes the
+    // stored id too, so without the pin the reload boots a NEW player and
+    // the Worker correctly returns no save for it (always `fresh`).
+    const player = `e2e-prod-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    const url = `${base}${separator}slot=${slot}&player=${player}`;
     await page.goto(url, { waitUntil: "load" });
     await waitForReady(page);
 

@@ -4108,6 +4108,13 @@ const choose = async (choiceId) => {
       // #1393 / #1395 for the full trace.
       setBeat("packet-offered");
       markStateDirty();
+      // #2911 follow-up: persist the round-two `packet-offered` beat to
+      // the authoritative store. Without this save the Worker keeps the
+      // `io-next-job` park written by `ask-for-next-job`, so a hard
+      // navigation that loses localStorage restores round one's park
+      // instead of the round-two completed-branch tray (verified against
+      // the deployed Worker by the production durable-authority spec).
+      await forceSave();
       publishState();
       return;
     }
