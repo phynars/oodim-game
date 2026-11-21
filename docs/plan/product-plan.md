@@ -22,13 +22,15 @@ Board reality (open issues, 2026-11-21): #2893 (epic), #2926 (Niko), #2927 (Act 
 
 | Order | Player outcome | Issue | LoE | Status |
 | --- | --- | --- | --- | --- |
-| 0 Gate | PLAYTEST/INTEGRATION: taps-only boot → Episode 1 end → "Begin Episode 2" → job (×3 door choices) → Niko (×2 routes) → Act I end card; visible text asserted at each dialogue change; fresh-context restore | **not filed** | M | GAP. Next chunk: check whether `door-decided-jobs.spec.ts` can be extended; file it. |
+| 0 Gate | PLAYTEST/INTEGRATION: taps-only boot → Episode 1 end → "Begin Episode 2" → job (×3 door choices) → Niko (×2 routes) → Act I end card; visible text asserted at each dialogue change; fresh-context restore | #2929 | M | OPEN P1, filed 2026-11-21. Blocked by #2927. Extends the tap/beat/deliverOffered/playToDoor helpers in `aftersign/e2e/door-decided-jobs.spec.ts` (that spec stops at job accept). Green on deployed by **2026-12-05**. |
 | 1–2 | "Begin Episode 2" + door-decided first job | #2894, #2895, #2917 | M | CLOSED (per #2926). |
-| 3 **NOW** | Niko names the stored Episode 1 route and offers a shortcut; answer stored | #2926 | L label | OPEN P1. Under-sized split risk: build rough first, research/spec docs must not stall it. |
-| 4 | Act I end card states job carried + answer to Niko; restores in a fresh context | #2927 | — | OPEN. Depends on #2926. |
+| 3 **NOW** | Niko names the stored Episode 1 route and offers a shortcut; answer stored | #2926 | L label | OPEN P1. Build rough first; research/spec docs must not stall it. **Cut by 2026-11-30**: if it hasn't merged by then, apply cut-list item 1 (the answer is stored, nothing else changes). |
+| 4 | Act I end card states job carried + answer to Niko; restores in a fresh context | #2927 | M | OPEN P1. Blocked by #2926. **Cut by 2026-12-05**: if it hasn't merged by then, apply cut-list item 2 (plain-text card). |
 | 5 | Closeout: blind AI-stranger playtest on deployed revision | — (Meta-Moderator) | S | After the gate is green. |
 
-Time-first sequencing (19 days): gate story filed by **2026-11-22**; #2926 wired rough by **2026-11-28** (W48); #2927 by **2026-12-03**; gate green on deployed by **2026-12-05**; closeout playtest by **2026-12-07**, leaving 12-08/10 for false-memory P1s. Cut list, in order: (1) Niko's shortcut changes nothing mechanically beyond being stored; (2) the Act I end card is plain text, no art; (3) playtest #7 carry-over polish (Io paragraph split, door-choice descriptions) — except anything that is a false memory. Never cut below three door-decided jobs and both Niko route lines, and never move the date.
+Milestone/Epic header lines: in the #2929 body; posted as comments on #2926 and #2927 (2026-11-21). Harness-only stories: 1 of 4 (#2929 is the gate, and it consumes the served surface).
+
+Time-first sequencing (19 days): gate story filed **2026-11-21** (#2929); #2926 wired rough by **2026-11-28** (W48); #2927 by **2026-12-03**; gate green on deployed by **2026-12-05**; closeout playtest by **2026-12-07**, leaving 12-08/10 for false-memory P1s. Cut list, in order: (1) Niko's shortcut changes nothing mechanically beyond being stored; (2) the Act I end card is plain text, no art; (3) playtest #7 carry-over polish (Io paragraph split, door-choice descriptions) — except anything that is a false memory. Never cut below three door-decided jobs and both Niko route lines, and never move the date.
 
 Drift (serves no M6-E1 outcome; the operator decides): #2080 (audit tracking, operator lane).
 
