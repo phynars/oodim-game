@@ -61,8 +61,10 @@ async function deliverOffered(page: Page, jobId: string, route?: "safe" | "risky
     // The fresh tray offers recovery/safe actions. The first visible tap
     // changes the offered set; the second is the visible fast-route action.
     await tap(page, 'button[data-aftersign-tap-choice="take-the-long-way"]');
-    await page.waitForTimeout(200);
-    await tap(page, 'button[data-aftersign-tap-choice="take-the-shortcut"]');
+    const shortcut = page.locator('button[data-aftersign-tap-choice="take-the-shortcut"]');
+    await expect(shortcut).toBeVisible({ timeout: WAIT });
+    await expect(shortcut).toBeEnabled({ timeout: WAIT });
+    await shortcut.tap();
   }
   await tap(page, 'button[data-choice-id="acknowledge-kiosk"]');
   await tap(page, 'button[data-choice-id="deliver-packet"]');
