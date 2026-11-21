@@ -1,19 +1,20 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Page } from "@playwright/test";
 
 const WAIT = 15_000;
 
 test.describe("Niko Thread shortcut (#2926)", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-  for (const [route, routeText, answer, answerText] of [
-    ["safe", "safe route", "take", "Take the shortcut"],
-    ["risky", "risky route", "refuse", "Refuse the shortcut"],
+  for (const [route, routeText, answer, answerText, door, jobName] of [
+    ["safe", "safe route", "take", "Take the shortcut", "keep-official-record", "The Ledger Run"],
+    ["risky", "risky route", "refuse", "Refuse the shortcut", "protect-private-lie", "The Quiet Envelope"],
+    ["safe", "safe route", "take", "Take the shortcut", "hang-new-sign", "The New Sign"],
   ] as const) {
-    test(`names the ${route} route and durably ${answer}s the shortcut`, async ({ page }) => {
+    test(`names the ${route} route and ends ${jobName} after Niko ${answer}s`, async ({ page, browser }) => {
       test.setTimeout(240_000);
       const token = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
       await page.goto(`/aftersign/?slot=niko-${route}-${token}&player=niko-${token}`, { waitUntil: "load" });
-      await playToDoor(page, "keep-official-record");
+      await playToDoor(page, door);
       await tap(page, "#acceptEpisodeTwoJob:not([disabled])");
       const niko = page.locator("#nikoThread");
       await expect(niko).toBeVisible({ timeout: WAIT });
@@ -23,19 +24,30 @@ test.describe("Niko Thread shortcut (#2926)", () => {
       const choice = page.locator(`[data-niko-shortcut-choice="${answer}"]`);
       await expect(choice).toHaveText(answerText);
       await choice.tap();
-      await expect(page.locator("[data-niko-shortcut-answer]")).toHaveAttribute(
-        "data-niko-shortcut-answer",
-        answer,
-      );
-      await page.reload({ waitUntil: "load" });
-      await expect(page.locator("[data-niko-shortcut-answer]")).toHaveAttribute(
-        "data-niko-shortcut-answer",
-        answer,
-        { timeout: WAIT },
-      );
-      await expect(page.locator(`[data-niko-shortcut-choice="${answer}"]`)).toBeDisabled();
-      await expect(page.locator("[data-niko-shortcut-choice]")).toHaveCount(2);
-      await expect(page.locator("[data-niko-shortcut-choice]:not([disabled])")).toHaveCount(0);
+      const ending = page.locator('[data-ending-id="episode-two-act-one"]');
+      await expect(ending).toBeVisible({ timeout: WAIT });
+      await expect(ending).toContainText("Episode 2 — Act I");
+      await expect(ending).toContainText(jobName);
+      await expect(ending).toHaveAttribute("data-niko-shortcut-answer", answer);
+      const box = await ending.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.y + box!.height).toBeLessThanOrEqual(844);
+      await expect(page.locator("[data-niko-shortcut-choice]")).toHaveCount(0);
+      const reset = page.locator("#resetButton");
+      await expect(reset).toBeVisible();
+      await expect(reset).toBeEnabled();
+      const freshContext = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+        isMobile: true,
+      });
+      const freshPage = await freshContext.newPage();
+      await freshPage.goto(page.url(), { waitUntil: "load" });
+      const restoredEnding = freshPage.locator('[data-ending-id="episode-two-act-one"]');
+      await expect(restoredEnding).toBeVisible({ timeout: WAIT });
+      await expect(restoredEnding).toContainText(jobName);
+      await expect(restoredEnding).toHaveAttribute("data-niko-shortcut-answer", answer);
+      await freshContext.close();
     });
   }
 });
