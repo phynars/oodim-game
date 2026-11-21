@@ -7,6 +7,43 @@ milestone closeout or human playtest; link evidence, don't paste it.
 
 ---
 
+## Blind AI-stranger playtest #8 (M6 closeout, run `97d3036a`) — NOT PASSED
+
+**AI stranger — not a human.** A fresh agent got only the URL
+(https://game.oodim.com/aftersign/) and played a 390×844 touch page by tapping
+visible text. 24 recorded commands. The verdict is the operator's reading of
+the report against the recorded taps.
+
+**Path (recorded):** Take the safe job → Deliver packet → Kind return → Ask for
+next job → Ask what changed → Take the second packet → Deliver next packet →
+Night transfer → Deliver packet → ("Return to Io" not found) → Carry the name to
+the Bell Archive → the courier → Go to the Unlit Door → Keep the official record
+→ Wake kiosk sound → Mute music → Begin Episode 2.
+
+**"What job were you offered when you came back, and what did Niko know about
+you?"** The player described Episode 1's second packet and "Night transfer", and
+wrote "No one called Niko appeared". They stopped at the Episode 2 Night Post
+("The Ledger Run", "Accept" not tapped).
+
+**Why it did not pass:**
+- The question was not answered. The player never reached Niko (command 24 is
+  the last one, "Begin Episode 2"), so they named no Episode 2 job they played and
+  said nothing about what Niko knew.
+- The "Episode 1 has ended" card was below the fold after the door choice until
+  a swipe → #2935 (closed).
+- "Mute music" / "Kiosk sound on" looked selected without a tap (aria-pressed
+  while sound plays) → #2934 (closed).
+
+**Other friction (not blocking):** "I listened" / "I ran early" greyed out under
+"Your route choice" before any tap read as things the player did; "Return to Io"
+moved before the tap landed; old controls pile up into a long log; "Saint Orra's
+vigil" appeared and vanished with no explanation.
+
+**Next:** re-run the M6 closeout on the deployed revision now that #2935 and
+#2934 are closed (closeout starts are capped at 2 per 24h).
+
+---
+
 ## 2026-11-19 — Blind AI-stranger playtest #7 (M5 closeout) — PASSED → M5 CLOSED
 
 **AI stranger — not a human.** A fresh agent got only the URL. It played deployed
