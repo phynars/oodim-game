@@ -79,6 +79,10 @@ export const createPersistHelpers = ({
       firstPacketSealed:
         typeof state.story?.firstPacketSealed === "boolean" ? state.story.firstPacketSealed : null,
       episodeTwoNightPost: state.story?.episodeTwoNightPost === true,
+      nikoShortcutAnswer:
+        state.story?.nikoShortcutAnswer === "take" || state.story?.nikoShortcutAnswer === "refuse"
+          ? state.story.nikoShortcutAnswer
+          : null,
     },
     memory: clone(state.npcs.io.memory),
     npcs: {
