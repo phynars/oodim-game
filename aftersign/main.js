@@ -9,7 +9,7 @@
 import * as THREE from "three";
 import { createKioskScene } from "./src/kioskScene.js";
 import { resolveIoDialogue } from "./src/ioDialogueResolver.js";
-import { episodeTwoJobForStory } from "./src/episodeTwoJobs.js";
+import { EPISODE_TWO_JOBS, episodeTwoJobForStory } from "./src/episodeTwoJobs.js";
 import { createCameraController } from "./src/presentation/cameraController.js";
 import { createDialogueController } from "./src/presentation/dialogueController.js";
 import { createMobileInputController } from "./src/presentation/mobileInputController.js";
@@ -1218,7 +1218,7 @@ const state = {
     // keeps the red-tag packet instead of falling back to round-1 blue.
     // Old saves (no delivery.id) derive it from the accepted handoff.
     id:
-      ["red-tag", "blue-packet", "ep2-sealed-ledger", "ep2-unmarked-envelope", "ep2-fresh-paint-sign"].includes(stored?.delivery?.id)
+      ["red-tag", "blue-packet", ...Object.values(EPISODE_TWO_JOBS).map((job) => job.deliveryId)].includes(stored?.delivery?.id)
         ? stored.delivery.id
         : stored?.player?.secondPacketHandoffAccepted
           ? "red-tag"
