@@ -22,7 +22,10 @@ test.describe("M6 phone playtest (#2929)", () => {
       await tapAdvance(page, "#acceptEpisodeTwoJob:not([disabled])");
 
       await expect(page.locator("#nikoThread")).toBeVisible({ timeout: WAIT });
-      await tapAdvance(page, `[data-niko-shortcut-choice="${answer}"]`);
+      // The deciding answer is tapped here in the spec, the way the player taps it.
+      const answerButton = page.locator(`[data-niko-shortcut-choice="${answer}"]`);
+      await expect(answerButton).toBeVisible({ timeout: WAIT });
+      await answerButton.tap();
 
       await assertEnding(page, jobName, answer);
       await assertFreshContext(browser, page.url(), jobName, answer);
