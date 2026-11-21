@@ -1779,6 +1779,10 @@ const lineForBeat = () => {
           host.append(nikoCard);
         }
       }
+      // #2935: the Night Post (job offer + Accept, later Niko) is rebuilt
+      // into the bounded HUD panel. Pin its bottom edge into view so the
+      // phone player can tap Accept without swiping.
+      scrollDialogueToNewestSection(host);
     }
     state.npcs.io.lastLine = `Night Post. I remember the door you chose: ${NIGHT_POST_DOOR_LABELS[state.story.doorChoice] ?? ""}.`;
     return state.npcs.io.lastLine;
@@ -4747,6 +4751,12 @@ const choose = async (choiceId) => {
       onChooseDoor: (nextChoiceId) => { void choose(nextChoiceId); },
       onBeginEpisodeTwo: beginEpisodeTwo,
     });
+    // #2935: the committed card ("Episode 1 has ended" + Begin Episode 2)
+    // replaces the door card inside the bounded `.hud .panel` scroller. The
+    // card's own scrollIntoView only reaches its inner scrollport, so pin the
+    // outer panel to the new card's bottom edge here, as the name-choice path
+    // already does. Without this the card stays below the fold until a swipe.
+    scrollDialogueToNewestSection(document.getElementById("episodeOneEnding"));
     publishState();
     return;
   }
