@@ -199,12 +199,11 @@ export const renderMaudBellArchiveEnding = (
   } else if (typeof outcome.scrollIntoView === "function") {
     outcome.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
-  // The continuation is the last row. Center it rather than using `nearest`:
-  // `nearest` can stop at the card's scrollport while an outer HUD/page
-  // scrollport still leaves this row below the phone viewport.
+  // The Begin Episode 2 control is the card's last row; bring it inside the
+  // card's own scrollport so the phone player can tap it without a swipe.
   const beginControl = typeof card.querySelector === "function" ? card.querySelector("#beginEpisodeTwo") : null;
   if (beginControl && typeof beginControl.scrollIntoView === "function") {
-    beginControl.scrollIntoView({ block: "center", inline: "nearest" });
+    beginControl.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
   return card;
 };
