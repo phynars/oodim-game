@@ -10,6 +10,7 @@ import * as THREE from "three";
 import { createKioskScene } from "./src/kioskScene.js";
 import { resolveIoDialogue } from "./src/ioDialogueResolver.js";
 import { EPISODE_TWO_JOBS, episodeTwoJobForStory } from "./src/episodeTwoJobs.js";
+import { resolveEpisodeTwoActOneEnding, renderEpisodeTwoActOneEnding } from "./src/episodeTwoActOneEnding.js";
 import { NIKO_SHORTCUT_CHOICES, nikoRouteLine, nikoShortcutReceipt } from "./src/nikoThread.js";
 import { createCameraController } from "./src/presentation/cameraController.js";
 import { createDialogueController } from "./src/presentation/dialogueController.js";
@@ -1213,6 +1214,7 @@ const state = {
     firstPacketSealed:
       typeof stored?.story?.firstPacketSealed === "boolean" ? stored.story.firstPacketSealed : null,
     episodeTwoNightPost: stored?.story?.episodeTwoNightPost === true,
+    episodeTwoActOneEnded: stored?.story?.episodeTwoActOneEnded === true,
     nikoShortcutAnswer:
       stored?.story?.nikoShortcutAnswer === NIKO_SHORTCUT_CHOICES.TAKE
       || stored?.story?.nikoShortcutAnswer === NIKO_SHORTCUT_CHOICES.REFUSE
@@ -1661,6 +1663,18 @@ const maudEndingCardIsCurrent = (doc) => {
 };
 
 const lineForBeat = () => {
+  const episodeTwoActOneEnding = resolveEpisodeTwoActOneEnding({
+    story: state.story,
+    delivery: state.delivery,
+  });
+  if (state.story.episodeTwoActOneEnded && episodeTwoActOneEnding) {
+    if (typeof document !== "undefined") {
+      renderEpisodeTwoActOneEnding(document, episodeTwoActOneEnding);
+      scrollDialogueToNewestSection(document.getElementById("episodeOneEnding"));
+    }
+    state.npcs.io.lastLine = "";
+    return "";
+  }
   if (state.story.episodeTwoNightPost) {
     const host = typeof document !== "undefined" ? document.getElementById("episodeOneEnding") : null;
     if (host && host.getAttribute("data-continuation") !== "night-post") {
@@ -1751,6 +1765,10 @@ const lineForBeat = () => {
             choice.addEventListener("click", async () => {
               if (state.story.nikoShortcutAnswer) return;
               state.story.nikoShortcutAnswer = answerId;
+              // The visible Niko answer completes the accepted Episode 2
+              // delivery. Persist this terminal marker before replacing the
+              // Night Post controls with the locked Act I card.
+              state.story.episodeTwoActOneEnded = true;
               markStateDirty();
               await persistAuthoritative({ dirty: true });
               host.setAttribute("data-continuation", "");
@@ -5779,6 +5797,7 @@ const resetSliceSave = async () => {
   // lineForBeat keeps taking the continuation branch and persistence saves
   // episodeTwoNightPost:true again.
   state.story.episodeTwoNightPost = false;
+  state.story.episodeTwoActOneEnded = false;
   state.story.nikoShortcutAnswer = null;
   { 
     const endingHost = document.getElementById("episodeOneEnding");
