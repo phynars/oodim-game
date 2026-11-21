@@ -2,12 +2,11 @@ const SOUND_BUTTON_SELECTED_ATTR = "data-kiosk-sound-selected";
 
 export const stampKioskSoundSelected = (button) => {
   if (!button) return;
-  button.setAttribute("aria-pressed", "true");
   button.setAttribute(SOUND_BUTTON_SELECTED_ATTR, "true");
   button.style.background = "rgb(92, 58, 30)";
   button.style.borderColor = "rgb(255, 214, 151)";
-  // #2225: the selected state names itself — the warm tile and
-  // aria-pressed are the state, "Kiosk sound on" is the receipt.
+  // The warm tile and label are the post-tap receipt. This label-changing
+  // control deliberately does not expose a pressed state.
   button.textContent = "Kiosk sound on";
 };
 

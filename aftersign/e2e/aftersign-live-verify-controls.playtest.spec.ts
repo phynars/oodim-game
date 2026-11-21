@@ -68,7 +68,9 @@ test.describe("AFTERSIGN live-verify control and save path", () => {
     // early" (the first-person stance Io is asking about). After the
     // tap the label flips to its past-tense receipt — the player sees
     // "You listened" over the warm selected tile. The TEXT is the
-    // receipt; the inline bg/border + aria-pressed are the state.
+    // receipt; the inline bg/border + aria-pressed are the state. The
+    // sound tile below is different: it changes its label to "Kiosk
+    // sound on" and deliberately exposes no pressed state.
     const acknowledge = page.locator("#acknowledgeRouteButton");
     await expect(acknowledge).toBeVisible({ timeout: WAIT_MS });
     await expect(acknowledge).toHaveText("I listened");
@@ -79,7 +81,8 @@ test.describe("AFTERSIGN live-verify control and save path", () => {
     const sound = page.locator("#soundButton");
     await expect(sound).toBeVisible({ timeout: WAIT_MS });
     await sound.tap();
-    await expect(sound).toHaveAttribute("aria-pressed", "true");
+    await expect(sound).toHaveAttribute("data-kiosk-sound-selected", "true");
+    await expect(sound).not.toHaveAttribute("aria-pressed", "true");
     await expect(sound).toHaveText(/sound on/i);
 
     // The reset control is isolated into its own `.slice-save-controls`
@@ -120,8 +123,9 @@ test.describe("AFTERSIGN live-verify control and save path", () => {
     });
 
     // This test exists for the pointerType check: the test above proves
-    // a tap toggles the button, but not that the input arrived as a
-    // touch pointer. aria-pressed is kept here on purpose to tie the
+    // a tap toggles the acknowledgement button, but not that the input
+    // arrived as a touch pointer. The acknowledgement button (unlike the
+    // sound tile) keeps aria-pressed, so it is asserted here to tie the
     // touch pointerdown to an activation in the same tap. Without it, a
     // pointerdown that some overlay swallowed before click would still
     // pass.

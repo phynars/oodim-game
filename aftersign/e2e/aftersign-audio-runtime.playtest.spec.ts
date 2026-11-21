@@ -49,6 +49,7 @@ test.describe("AFTERSIGN served audio", () => {
       await tapVisible(page.locator("button[data-offered-job-id]").first());
       await expect.poll(async () => (await audio(page)).ambientStarted, { timeout: STEP_WAIT_MS }).toBe(true);
       await expect.poll(async () => (await audio(page)).musicStarted, { timeout: STEP_WAIT_MS }).toBe(true);
+      await expect(page.locator("#musicButton")).not.toHaveAttribute("aria-pressed", "true");
     });
 
     await test.step("tap Mute music", async () => {
