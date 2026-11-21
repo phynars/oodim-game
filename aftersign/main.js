@@ -9,7 +9,7 @@
 import * as THREE from "three";
 import { createKioskScene } from "./src/kioskScene.js";
 import { resolveIoDialogue } from "./src/ioDialogueResolver.js";
-import { episodeTwoJobForStory } from "./src/episodeTwoJobs.js";
+import { EPISODE_TWO_JOBS, episodeTwoJobForStory } from "./src/episodeTwoJobs.js";
 import { createCameraController } from "./src/presentation/cameraController.js";
 import { createDialogueController } from "./src/presentation/dialogueController.js";
 import { createMobileInputController } from "./src/presentation/mobileInputController.js";
@@ -1218,7 +1218,7 @@ const state = {
     // keeps the red-tag packet instead of falling back to round-1 blue.
     // Old saves (no delivery.id) derive it from the accepted handoff.
     id:
-      stored?.delivery?.id === "red-tag" || stored?.delivery?.id === "blue-packet"
+      ["red-tag", "blue-packet", ...Object.values(EPISODE_TWO_JOBS).map((job) => job.deliveryId)].includes(stored?.delivery?.id)
         ? stored.delivery.id
         : stored?.player?.secondPacketHandoffAccepted
           ? "red-tag"
@@ -1677,7 +1677,31 @@ const lineForBeat = () => {
         jobName.textContent = job.name;
         const jobBrief = document.createElement("p");
         jobBrief.textContent = job.brief;
-        jobCard.append(jobName, jobBrief);
+        const offer = document.createElement("p");
+        offer.className = "episode-two-job__io-offer";
+        offer.textContent = "Io: This is the work the door left for you.";
+        const accept = document.createElement("button");
+        accept.type = "button";
+        accept.id = "acceptEpisodeTwoJob";
+        accept.textContent = "Accept";
+        accept.style.pointerEvents = "auto";
+        accept.style.minHeight = "44px";
+        const accepted = state.delivery.id === job.deliveryId;
+        accept.disabled = accepted;
+        if (accepted) {
+          accept.textContent = "Accepted";
+          jobCard.setAttribute("data-episode-two-delivery-id", job.deliveryId);
+        }
+        accept.addEventListener("click", async () => {
+          state.delivery.id = job.deliveryId;
+          markStateDirty();
+          await persistAuthoritative({ dirty: true });
+          jobCard.setAttribute("data-episode-two-delivery-id", job.deliveryId);
+          accept.disabled = true;
+          accept.textContent = "Accepted";
+          publishState();
+        });
+        jobCard.append(jobName, jobBrief, offer, accept);
         host.append(jobCard);
       }
     }

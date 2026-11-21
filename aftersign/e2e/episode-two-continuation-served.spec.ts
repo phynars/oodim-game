@@ -109,6 +109,23 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await expect(page.locator("#beginEpisodeTwo")).toHaveCount(0);
   });
 
+  test("accepting the visible Night Post offer persists its delivery id", async ({ page }) => {
+    test.setTimeout(TEST_TIMEOUT);
+    await page.goto(`/aftersign/?slot=${slotFor("accept")}`, { waitUntil: "load" });
+    await runToEnding(page);
+    await page.locator("#beginEpisodeTwo").tap();
+    const accept = page.locator("#acceptEpisodeTwoJob");
+    await expect(accept).toBeVisible({ timeout: WAIT_MS });
+    await expect(page.locator(".episode-two-job__io-offer")).toHaveText("Io: This is the work the door left for you.");
+    await accept.tap();
+    const job = page.locator("#episodeTwoJob");
+    await expect(job).toHaveAttribute("data-episode-two-delivery-id", "ep2-sealed-ledger");
+    await expect(accept).toBeDisabled();
+    await page.reload({ waitUntil: "load" });
+    await expect(job).toHaveAttribute("data-episode-two-delivery-id", "ep2-sealed-ledger");
+    await expect(page.locator("#acceptEpisodeTwoJob")).toBeDisabled();
+  });
+
   test("Start fresh from the Night Post leaves it and stays left after reload", async ({ page }) => {
     test.setTimeout(TEST_TIMEOUT);
     await page.goto(`/aftersign/?slot=${slotFor("reset")}`, { waitUntil: "load" });
