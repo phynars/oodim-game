@@ -6,12 +6,14 @@ const WAIT_MS = 15_000;
 type JobCase = {
   doorChoice: string;
   jobId: string;
+  deliveryId: string;
 };
 
+// Mirrors aftersign/src/episodeTwoJobs.js EPISODE_TWO_JOBS.
 const CASES: readonly JobCase[] = [
-  { doorChoice: "keep-official-record", jobId: "ep2-ledger-run" },
-  { doorChoice: "protect-private-lie", jobId: "ep2-quiet-envelope" },
-  { doorChoice: "hang-new-sign", jobId: "ep2-new-sign" },
+  { doorChoice: "keep-official-record", jobId: "ep2-ledger-run", deliveryId: "ep2-sealed-ledger" },
+  { doorChoice: "protect-private-lie", jobId: "ep2-quiet-envelope", deliveryId: "ep2-unmarked-envelope" },
+  { doorChoice: "hang-new-sign", jobId: "ep2-new-sign", deliveryId: "ep2-fresh-paint-sign" },
 ];
 
 function ids(tag: string) {
@@ -70,10 +72,12 @@ test.describe("Door-decided Episode 2 jobs (#2920)", () => {
       const job = page.locator(`#episodeTwoJob[data-episode-two-job-id="${c.jobId}"]`);
       await expect(job).toBeVisible({ timeout: WAIT_MS });
       await tapVisible(page, "#acceptEpisodeTwoJob:not([disabled])");
-      await expect(job).toHaveAttribute("data-episode-two-delivery-id", /ep2-/);
+      await expect(job).toHaveAttribute("data-episode-two-delivery-id", c.deliveryId);
 
       await page.reload({ waitUntil: "load" });
-      await expect(page.locator(`#episodeTwoJob[data-episode-two-job-id="${c.jobId}"]`)).toBeVisible({ timeout: WAIT_MS });
+      const reloadedJob = page.locator(`#episodeTwoJob[data-episode-two-job-id="${c.jobId}"]`);
+      await expect(reloadedJob).toBeVisible({ timeout: WAIT_MS });
+      await expect(reloadedJob).toHaveAttribute("data-episode-two-delivery-id", c.deliveryId);
       await expect(page.locator("#acceptEpisodeTwoJob")).toBeDisabled();
     });
   }
