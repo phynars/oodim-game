@@ -63,12 +63,17 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     test.setTimeout(TEST_TIMEOUT);
     await page.goto(`/aftersign/?slot=${slotFor("control")}`, { waitUntil: "load" });
     await runToEnding(page);
-    await expect(page.locator("#beginEpisodeTwo")).toHaveText("Begin Episode 2");
+    const heading = page.getByRole("heading", { name: "Episode 1 has ended" });
     const begin = page.locator("#beginEpisodeTwo");
+    await expect(heading).toBeVisible();
+    await expect(begin).toHaveText("Begin Episode 2");
+    for (const control of [heading, begin]) {
+      const box = await control.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.y).toBeGreaterThanOrEqual(0);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(await page.evaluate(() => window.innerHeight));
+    }
     const box = await begin.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.y).toBeGreaterThanOrEqual(0);
-    expect(box!.y + box!.height).toBeLessThanOrEqual(PHONE_VIEWPORT.height);
     expect(box!.height).toBeGreaterThanOrEqual(44);
     // Actionability + hit-test: no overlay intercepts the tap.
     await begin.tap({ trial: true });
@@ -81,6 +86,12 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await page.locator("#beginEpisodeTwo").tap();
     await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toBeVisible({ timeout: WAIT_MS });
     await expect(page.locator("#episodeOneEnding")).toContainText("Night Post");
+    const accept = page.locator("#acceptEpisodeTwoJob");
+    await expect(accept).toBeVisible();
+    const acceptBox = await accept.boundingBox();
+    expect(acceptBox).not.toBeNull();
+    expect(acceptBox!.y).toBeGreaterThanOrEqual(0);
+    expect(acceptBox!.y + acceptBox!.height).toBeLessThanOrEqual(await page.evaluate(() => window.innerHeight));
     await expect(page.locator("#beginEpisodeTwo")).toHaveCount(0);
     await expect(page.locator("#episodeOneEnding [data-ending-id]")).toHaveCount(0);
   });
