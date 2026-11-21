@@ -8,7 +8,7 @@ test("Wake kiosk sound tap retains its selected treatment through a render frame
   await expect(soundButton).toHaveText("Wake kiosk sound");
   await soundButton.click();
 
-  await expect(soundButton).toHaveAttribute("aria-pressed", "true");
+  await expect(soundButton).not.toHaveAttribute("aria-pressed", "true");
   await expect(soundButton).toHaveAttribute("data-kiosk-sound-selected", "true");
   await expect(soundButton).toHaveCSS("background-color", "rgb(92, 58, 30)");
   await expect(soundButton).toHaveCSS("border-top-color", "rgb(255, 214, 151)");
@@ -16,6 +16,6 @@ test("Wake kiosk sound tap retains its selected treatment through a render frame
   await page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
   );
-  await expect(soundButton).toHaveAttribute("aria-pressed", "true");
+  await expect(soundButton).not.toHaveAttribute("aria-pressed", "true");
   await expect(soundButton).toHaveAttribute("data-kiosk-sound-selected", "true");
 });

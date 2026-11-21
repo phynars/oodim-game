@@ -1616,7 +1616,6 @@ const syncMusicButton = ({ started, muted }) => {
   if (!musicButton) return;
   musicButton.hidden = !started;
   musicButton.textContent = muted ? "Unmute music" : "Mute music";
-  musicButton.setAttribute("aria-pressed", String(!muted));
 };
 const getAudioController = () => {
   audioController ??= createAftersignAudioController({

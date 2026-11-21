@@ -48,14 +48,14 @@ test.describe("AFTERSIGN phone sound control", () => {
     await waitForBeat(page, "packet-offered");
 
     // (1) Tap the sound button FIRST, at the fresh-boot surface. The
-    // receipt from `soundButtonSelected.js` is "Kiosk sound on" plus
-    // aria-pressed="true" — this is the only proof the click reached
-    // the handler (the audio pipeline itself can't be witnessed from
-    // Playwright because WebAudio is user-gesture gated).
+    // receipt from `soundButtonSelected.js` is "Kiosk sound on". The label
+    // proves the click reached the handler without claiming a pressed state
+    // (the audio pipeline itself can't be witnessed from Playwright because
+    // WebAudio is user-gesture gated).
     const sound = page.locator("#soundButton");
     await expect(sound).toBeVisible({ timeout: WAIT_MS });
     await sound.tap();
-    await expect(sound).toHaveAttribute("aria-pressed", "true");
+    await expect(sound).not.toHaveAttribute("aria-pressed", "true");
     await expect(sound).toHaveText(/sound on/i);
 
     // (2) The sound tap must not swallow the offered-job selection.
@@ -81,7 +81,7 @@ test.describe("AFTERSIGN phone sound control", () => {
 
     // Sound state must survive the beat transition — the receipt is
     // durable, not a one-frame flash.
-    await expect(sound).toHaveAttribute("aria-pressed", "true");
+    await expect(sound).not.toHaveAttribute("aria-pressed", "true");
     await expect(sound).toHaveText(/sound on/i);
   });
 });
