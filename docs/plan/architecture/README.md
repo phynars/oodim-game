@@ -241,6 +241,7 @@ classDiagram
   class Story {
     endingId
     endingCause
+    nikoShortcutAnswer : take | refuse
   }
   class IoMemoryFacts {
     deliveryOutcome : sealed | opened

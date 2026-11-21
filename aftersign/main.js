@@ -10,6 +10,7 @@ import * as THREE from "three";
 import { createKioskScene } from "./src/kioskScene.js";
 import { resolveIoDialogue } from "./src/ioDialogueResolver.js";
 import { EPISODE_TWO_JOBS, episodeTwoJobForStory } from "./src/episodeTwoJobs.js";
+import { NIKO_SHORTCUT_CHOICES, nikoRouteLine, nikoShortcutReceipt } from "./src/nikoThread.js";
 import { createCameraController } from "./src/presentation/cameraController.js";
 import { createDialogueController } from "./src/presentation/dialogueController.js";
 import { createMobileInputController } from "./src/presentation/mobileInputController.js";
@@ -1212,6 +1213,11 @@ const state = {
     firstPacketSealed:
       typeof stored?.story?.firstPacketSealed === "boolean" ? stored.story.firstPacketSealed : null,
     episodeTwoNightPost: stored?.story?.episodeTwoNightPost === true,
+    nikoShortcutAnswer:
+      stored?.story?.nikoShortcutAnswer === NIKO_SHORTCUT_CHOICES.TAKE
+      || stored?.story?.nikoShortcutAnswer === NIKO_SHORTCUT_CHOICES.REFUSE
+        ? stored.story.nikoShortcutAnswer
+        : null,
   },
   delivery: {
     // #2267: restore the saved job so a reload after "Ask for next job"
@@ -1699,10 +1705,62 @@ const lineForBeat = () => {
           jobCard.setAttribute("data-episode-two-delivery-id", job.deliveryId);
           accept.disabled = true;
           accept.textContent = "Accepted";
+          // Rebuild the Night Post composition so Niko is added after the
+          // player-visible acceptance transition.
+          host.setAttribute("data-continuation", "");
+          renderText();
           publishState();
         });
         jobCard.append(jobName, jobBrief, offer, accept);
         host.append(jobCard);
+        if (accepted) {
+          const nikoCard = document.createElement("section");
+          nikoCard.id = "nikoThread";
+          nikoCard.setAttribute("data-npc", "niko-thread");
+          const routeLine = document.createElement("p");
+          routeLine.setAttribute(
+            "data-niko-route",
+            state.player.routeRisk?.lastRoute === "safe"
+              ? "safe"
+              : state.player.routeRisk?.lastRoute === "fast"
+                ? "risky"
+                : "none",
+          );
+          routeLine.textContent = nikoRouteLine(state.player.routeRisk);
+          nikoCard.append(routeLine);
+
+          const answer = state.story.nikoShortcutAnswer;
+          const receipt = nikoShortcutReceipt(answer);
+          if (receipt) {
+            const answerLine = document.createElement("p");
+            answerLine.setAttribute("data-niko-shortcut-answer", answer);
+            answerLine.textContent = receipt;
+            nikoCard.append(answerLine);
+          }
+          for (const [answerId, label] of [
+            [NIKO_SHORTCUT_CHOICES.TAKE, "Take the shortcut"],
+            [NIKO_SHORTCUT_CHOICES.REFUSE, "Refuse the shortcut"],
+          ]) {
+            const choice = document.createElement("button");
+            choice.type = "button";
+            choice.textContent = label;
+            choice.setAttribute("data-niko-shortcut-choice", answerId);
+            choice.style.pointerEvents = "auto";
+            choice.style.minHeight = "44px";
+            choice.disabled = Boolean(answer);
+            choice.addEventListener("click", async () => {
+              if (state.story.nikoShortcutAnswer) return;
+              state.story.nikoShortcutAnswer = answerId;
+              markStateDirty();
+              await persistAuthoritative({ dirty: true });
+              host.setAttribute("data-continuation", "");
+              renderText();
+              publishState();
+            });
+            nikoCard.append(choice);
+          }
+          host.append(nikoCard);
+        }
       }
     }
     state.npcs.io.lastLine = `Night Post. I remember the door you chose: ${NIGHT_POST_DOOR_LABELS[state.story.doorChoice] ?? ""}.`;
@@ -5721,7 +5779,8 @@ const resetSliceSave = async () => {
   // lineForBeat keeps taking the continuation branch and persistence saves
   // episodeTwoNightPost:true again.
   state.story.episodeTwoNightPost = false;
-  {
+  state.story.nikoShortcutAnswer = null;
+  { 
     const endingHost = document.getElementById("episodeOneEnding");
     while (endingHost?.firstChild) endingHost.removeChild(endingHost.firstChild);
     endingHost?.removeAttribute("data-continuation");
