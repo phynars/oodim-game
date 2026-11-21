@@ -4,7 +4,35 @@
 
 A phone player takes a delivery job, makes a consequential choice, and returns to a world that remembers mechanically: what the player can do next changes, not merely what Io says. Ship the smallest complete replayable loop at https://game.oodim.com/aftersign before adding characters or polish. Memory is progression; merged components are not acceptance.
 
-## Planning checkpoint — 2026-11-14 (supersedes everything below; sections below are history)
+## Planning checkpoint — 2026-11-21 (supersedes everything below; sections below are history)
+
+Authority: `docs/flagship/BRIEF.md` § "Active milestone: M6 — Episode 2 opens: the door decides the job" and § "After M6: who closes a milestone and names the next". The active milestone is the open epic **#2893**. M4 closed 2026-11-14 and M5 closed 2026-11-19 (brief; not re-certified here).
+
+### M6 — ACTIVE. Deadline: 2026-12-10 · Days remaining: **19** as of 2026-11-21
+
+Outcome (brief, verbatim): "a phone player who has reached an Episode 1 end screen sees one new control, "Begin Episode 2", in that session or a later one. Tapping it returns them to the Night Post, where Io offers a first job that exists only because of what they did at the Unlit Door".
+
+Founder bar (brief, verbatim): "**M6 metric: the door decides the job.** The three stored door choices reach three different first jobs on the served page: different visible job names, different controls and different stored delivery ids, not one job with three captions."
+
+Definition of done: (1) a served-page Playwright spec at 390×844 drives boot → Episode 1 end screen → "Begin Episode 2" → door-decided job → Niko → Episode 2 Act I end card by taps on visible controls only, reaches all three jobs and both stored routes, restores the end card in a fresh context, green in `aftersign` shards and post-deploy `served-replay`; (2) blind AI-stranger closeout answers "What job were you offered when you came back, and what did Niko know about you?" with no false memory, verbatim in the devlog.
+
+Board reality (open issues, 2026-11-21): #2893 (epic), #2926 (Niko), #2927 (Act I end card), #2080. Per #2926's body, #2894, #2895 and #2917 (door-decided job: `aftersign/src/episodeTwoJobs.js`, `aftersign/e2e/door-decided-jobs.spec.ts`) are closed — not re-read this chunk.
+
+#### M6-E1 (#2893) — a phone player begins Episode 2, gets a door-decided job, meets Niko, and reaches the Act I end card by taps
+
+| Order | Player outcome | Issue | LoE | Status |
+| --- | --- | --- | --- | --- |
+| 0 Gate | PLAYTEST/INTEGRATION: taps-only boot → Episode 1 end → "Begin Episode 2" → job (×3 door choices) → Niko (×2 routes) → Act I end card; visible text asserted at each dialogue change; fresh-context restore | **not filed** | M | GAP. Next chunk: check whether `door-decided-jobs.spec.ts` can be extended; file it. |
+| 1–2 | "Begin Episode 2" + door-decided first job | #2894, #2895, #2917 | M | CLOSED (per #2926). |
+| 3 **NOW** | Niko names the stored Episode 1 route and offers a shortcut; answer stored | #2926 | L label | OPEN P1. Under-sized split risk: build rough first, research/spec docs must not stall it. |
+| 4 | Act I end card states job carried + answer to Niko; restores in a fresh context | #2927 | — | OPEN. Depends on #2926. |
+| 5 | Closeout: blind AI-stranger playtest on deployed revision | — (Meta-Moderator) | S | After the gate is green. |
+
+Time-first sequencing (19 days): gate story filed by **2026-11-22**; #2926 wired rough by **2026-11-28** (W48); #2927 by **2026-12-03**; gate green on deployed by **2026-12-05**; closeout playtest by **2026-12-07**, leaving 12-08/10 for false-memory P1s. Cut list, in order: (1) Niko's shortcut changes nothing mechanically beyond being stored; (2) the Act I end card is plain text, no art; (3) playtest #7 carry-over polish (Io paragraph split, door-choice descriptions) — except anything that is a false memory. Never cut below three door-decided jobs and both Niko route lines, and never move the date.
+
+Drift (serves no M6-E1 outcome; the operator decides): #2080 (audit tracking, operator lane).
+
+## Planning checkpoint — 2026-11-14 (history; superseded by 2026-11-21)
 
 ### M4 — ACTIVE. Deadline: 2026-11-19 · Days remaining: **5** as of 2026-11-14
 
