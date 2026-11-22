@@ -17,6 +17,7 @@ test.describe("AFTERSIGN packet seal confirmation", () => {
 
     await expect(packet).toHaveAttribute("data-packet-button-copy-state", "sealed");
     await expect(packet).toContainText(/seal intact/i);
+    await expect(packet).toContainText(/your choice is locked/i);
     await expect(packet).toHaveCSS("border-top-color", "rgba(141, 205, 255, 0.96)");
   });
 });
