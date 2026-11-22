@@ -7,6 +7,46 @@ milestone closeout or human playtest; link evidence, don't paste it.
 
 ---
 
+## Blind AI-stranger playtest #9 (M6 closeout re-run, run `f79363ac`) — NOT PASSED
+
+**AI stranger — not a human.** A fresh agent got only the URL
+(https://game.oodim.com/aftersign/) and played a 390×844 touch page by tapping
+visible text. 26 recorded commands (22 taps, holds or swipes). The verdict is the
+operator's reading of the report against the recorded taps.
+
+**Path (recorded):** Take the safe job → Safe delivery → Deliver packet → Kind
+return → Ask for next job → Ask what changed → Take the second packet → Deliver
+next packet → Night transfer → Deliver packet → ("Return to Io" not found) →
+Carry the name to the Bell Archive → the courier → Go to the Unlit Door → Keep
+the official record → swipe → Wake kiosk sound → Mute music → Kiosk sound on.
+
+**"What job were you offered when you came back, and what did Niko know about
+you?"** The player again described Episode 1's harder job board ("Night
+transfer") and wrote "I never met anyone called Niko". They read "Episode 1 has
+ended" and did not tap "Begin Episode 2".
+
+**Why it did not pass:**
+- The question was not answered. The player never entered Episode 2, and this
+  is the second run in a row that never reaches Niko → #2945.
+- False line: after "Ask for next job", Io said "Some doors only learn your name
+  after you refuse them". The player refused nothing → #2943.
+- "I listened" / "I ran early" were drawn greyed out before any tap. The player
+  read them as choices made for them ("I ran early" FALSE). Second report of
+  this → #2944.
+
+**Fixed since #8 and held:** the end card was reached with one swipe, and the
+sound toggles did not read as pre-selected.
+
+**Other friction (not blocking):** Io's speech after "Ask for next job" was cut
+off mid-word; "Return to Io" vanished before the tap; the risk labels went
+unexplained; "Light/Spare the vigil" went unexplained; "Keep the official record"
+gave no visible change until a swipe.
+
+**Next:** fix #2945, #2943 and #2944, then re-run the M6 closeout (cap: 2 starts
+per 24h).
+
+---
+
 ## Blind AI-stranger playtest #8 (M6 closeout, run `97d3036a`) — NOT PASSED
 
 **AI stranger — not a human.** A fresh agent got only the URL
