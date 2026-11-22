@@ -89,10 +89,11 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     const begin = page.locator("#beginEpisodeTwo");
     await expect(heading).toHaveText("Episode 1 has ended");
     await expect(begin).toHaveText("Begin Episode 2");
+    await expect(page.getByText("Episode 1 complete. Episode 2 is ready.", { exact: true })).toBeVisible();
     await expectUnclippedInPanel(page, heading);
     await expectUnclippedInPanel(page, begin);
     const box = await begin.boundingBox();
-    expect(box!.height).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(56);
     await begin.tap({ trial: true });
   });
 
@@ -104,8 +105,11 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toBeVisible({ timeout: WAIT_MS });
     await expect(page.locator("#episodeOneEnding")).toContainText("Night Post");
     const accept = page.locator("#acceptEpisodeTwoJob");
+    await expect(accept).toHaveText(/Accept The Ledger Run/);
     await expectUnclippedInPanel(page, page.getByText("Night Post", { exact: true }));
     await expectUnclippedInPanel(page, accept);
+    await accept.tap();
+    await expect(page.locator("#nikoThread")).toBeVisible({ timeout: WAIT_MS });
     await expect(page.locator("#beginEpisodeTwo")).toHaveCount(0);
     await expect(page.locator("#episodeOneEnding [data-ending-id]")).toHaveCount(0);
   });
