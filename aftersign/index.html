@@ -683,13 +683,21 @@
         pointer-events: auto;
       }
 
-      /* Sound is a utility control, not a story choice. Its sibling host
-         avoids choice-row layout while re-enabling interaction under `.hud`. */
+      /* Sound is a utility control, not a story choice. It is pinned to
+         the top-right corner OUTSIDE `.hud` so it adds nothing to the
+         panel height the move pad clears (#2965 review F3). */
       .sound-control-corner {
+        position: fixed;
+        top: max(12px, env(safe-area-inset-top));
+        right: max(12px, env(safe-area-inset-right));
+        z-index: 62;
         display: flex;
-        justify-content: flex-end;
-        margin-top: 12px;
         pointer-events: auto;
+      }
+
+      .sound-control-corner[data-start-gated="true"] {
+        visibility: hidden;
+        pointer-events: none;
       }
 
       /* M3-E1 (#2261 / PR #2265) — the Episode 1 ending host is
@@ -1297,6 +1305,12 @@
       </div>
     </div>
     <p class="state-readout" id="stateReadout">story: packet-offered · memory: pending</p>
+    <!-- #2959: sound is a utility corner control, a sibling of `.hud`
+         (not inside it) so it never grows the panel the move pad's
+         clearance tracks (--aftersign-hud-height). -->
+    <div class="sound-control-corner" data-start-gated="true" aria-label="Kiosk sound control">
+      <button id="soundButton" type="button">Toggle kiosk sound</button>
+    </div>
     <section class="hud" data-start-gated="true" aria-live="polite">
       <div class="panel">
         <p class="speaker" id="speaker">Io</p>
@@ -1377,9 +1391,6 @@
           </div>
           <button id="deliverButton" type="button" data-aftersign-tap-choice="deliver-packet">Deliver at the blue kiosk</button>
               <button id="musicButton" type="button" hidden>Mute music</button>
-        </div>
-        <div class="sound-control-corner" aria-label="Kiosk sound control">
-          <button id="soundButton" type="button">Toggle kiosk sound</button>
         </div>
         <!-- #2265: ending host sits AFTER .controls so its appearance
              cannot push the job-offer button mid-press (maxTravel <= 6px). -->
