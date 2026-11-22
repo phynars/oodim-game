@@ -32,7 +32,7 @@ async function runToEnding(page: Page, doorChoice = "keep-official-record"): Pro
   await tapChoice(page, "acknowledge-kiosk");
   await tapChoice(page, "deliver-packet");
   await waitForBeat(page, "io-return-recognition");
-  await tapVisible(page, 'button[data-return-reason="blunt"]:not([disabled])');
+  await tapVisible(page, 'button[data-return-reason="kind"]:not([disabled])');
   await waitForBeat(page, "return-tone-choice");
   await tapChoice(page, "ask-for-next-job");
   await waitForBeat(page, "io-next-job");
@@ -53,6 +53,28 @@ async function runToEnding(page: Page, doorChoice = "keep-official-record"): Pro
   await expect(page.locator("#beginEpisodeTwo")).toBeVisible({ timeout: WAIT_MS });
 }
 
+async function expectUnclippedInPanel(page: Page, control: ReturnType<Page["locator"]>): Promise<void> {
+  await expect(control).toBeVisible({ timeout: WAIT_MS });
+  await expect.poll(async () => control.evaluate((element) => {
+    const panel = element.closest(".panel");
+    if (!panel) return false;
+    for (let ancestor = element.parentElement; ancestor && ancestor !== panel; ancestor = ancestor.parentElement) {
+      const style = getComputedStyle(ancestor);
+      if (["auto", "scroll", "hidden", "clip"].includes(style.overflowY)) return false;
+    }
+    const rect = element.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    return rect.top >= panelRect.top
+      && rect.bottom <= panelRect.bottom
+      && rect.top >= 0
+      && rect.bottom <= window.innerHeight
+      && Boolean(hit && (hit === element || element.contains(hit)));
+  })).toBe(true);
+}
+
 const slotFor = (tag: string) =>
   `ep2-${tag}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -65,17 +87,12 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await runToEnding(page);
     const heading = page.getByRole("heading", { name: "Episode 1 has ended" });
     const begin = page.locator("#beginEpisodeTwo");
-    await expect(heading).toBeVisible();
+    await expect(heading).toHaveText("Episode 1 has ended");
     await expect(begin).toHaveText("Begin Episode 2");
-    for (const control of [heading, begin]) {
-      const box = await control.boundingBox();
-      expect(box).not.toBeNull();
-      expect(box!.y).toBeGreaterThanOrEqual(0);
-      expect(box!.y + box!.height).toBeLessThanOrEqual(await page.evaluate(() => window.innerHeight));
-    }
+    await expectUnclippedInPanel(page, heading);
+    await expectUnclippedInPanel(page, begin);
     const box = await begin.boundingBox();
     expect(box!.height).toBeGreaterThanOrEqual(44);
-    // Actionability + hit-test: no overlay intercepts the tap.
     await begin.tap({ trial: true });
   });
 
@@ -87,11 +104,8 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toBeVisible({ timeout: WAIT_MS });
     await expect(page.locator("#episodeOneEnding")).toContainText("Night Post");
     const accept = page.locator("#acceptEpisodeTwoJob");
-    await expect(accept).toBeVisible();
-    const acceptBox = await accept.boundingBox();
-    expect(acceptBox).not.toBeNull();
-    expect(acceptBox!.y).toBeGreaterThanOrEqual(0);
-    expect(acceptBox!.y + acceptBox!.height).toBeLessThanOrEqual(await page.evaluate(() => window.innerHeight));
+    await expectUnclippedInPanel(page, page.getByText("Night Post", { exact: true }));
+    await expectUnclippedInPanel(page, accept);
     await expect(page.locator("#beginEpisodeTwo")).toHaveCount(0);
     await expect(page.locator("#episodeOneEnding [data-ending-id]")).toHaveCount(0);
   });

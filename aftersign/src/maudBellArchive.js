@@ -76,12 +76,6 @@ export const renderMaudBellArchiveEnding = (
   card.setAttribute("data-district-light", ending.light);
   card.setAttribute("data-bell-ringing", "true");
   card.style.pointerEvents = "auto";
-  // Keep the complete terminal card inside the phone dialogue scrollport.
-  // The final light line and door control remain readable without a manual
-  // swipe even when preceding dialogue fills the panel.
-  card.style.maxHeight = "100%";
-  card.style.overflowY = "auto";
-
   const title = doc.createElement("h2");
   title.textContent = doorOpen && !doorChoice ? "Unlit Door" : doorChoice ? "Episode 1 has ended" : "Act II — Bell Archive";
   const bell = doc.createElement("p");
@@ -188,23 +182,9 @@ export const renderMaudBellArchiveEnding = (
   if (doorOpen) showDoorChoices();
   host.replaceChildren(card);
   ringBell(doc, bell);
-  // #2824: keep the WHOLE ending card visible in the bounded HUD panel after
-  // the choice appends it. Scrolling only the outcome line into view (the
-  // previous target) aligned the panel's bottom edge to that line, so the
-  // dialogue and district-light lines below it stayed under the fold and
-  // needed a swipe (blind playtest 6). `nearest` on the card aligns its
-  // bottom edge to the scrollport when it overflows below.
-  if (typeof card.scrollIntoView === "function") {
-    card.scrollIntoView({ block: "nearest", inline: "nearest" });
-  } else if (typeof outcome.scrollIntoView === "function") {
-    outcome.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }
-  // The Begin Episode 2 control is the card's last row; bring it inside the
-  // card's own scrollport so the phone player can tap it without a swipe.
-  const beginControl = typeof card.querySelector === "function" ? card.querySelector("#beginEpisodeTwo") : null;
-  if (beginControl && typeof beginControl.scrollIntoView === "function") {
-    beginControl.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }
+  // The caller owns scrolling the bounded `.hud .panel`. Calling
+  // scrollIntoView here would race that outer-panel pin and can leave the
+  // completed card's heading clipped above the panel on touch devices.
   return card;
 };
 
