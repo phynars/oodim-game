@@ -5190,8 +5190,14 @@ const reloadFromSave = async ({ clearLocalState = false } = {}) => {
   // boot override from the restored memory + beat.
   armReturningSessionBootLine(Boolean(state.packet.delivered));
 
-  // Reset recognition activity synchronously after restore. Configuration
-  // in `state.interaction.recognitionFeedback` deliberately survives.
+  // Reset recognition activity synchronously after restore, in the same
+  // tick the reload returns (no RAF race for the flagship reset spec).
+  // `state.interaction.recognitionFeedback` is deliberately LEFT ALONE: it
+  // is amplitude CONFIG for the NEXT beat, not beat activity. Zeroing it
+  // kills the returning-session camera feel (io-recognition-return-visual-
+  // feel floor); re-arming it to the authored values breaks the measured-
+  // vs-canned gate in io-recognition-memory-beat-contract, which zeroes it
+  // and then forceReloads. Preserving it satisfies both.
   const recognitionReset = resetRecognitionAfterReload({
     clearDomFeedback: () => clearRecognitionDomFeedback({
       lineNode: line,

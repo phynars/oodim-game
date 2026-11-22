@@ -784,7 +784,24 @@ test.describe("AFTERSIGN flagship surface contract (shared)", () => {
     // Hard reload with cleared local state must reset the feedback to its
     // inert shape (aftersign/main.js reset path zeroes the object and
     // clears the DOM custom properties via clearRecognitionDomFeedback).
-    await page.evaluate(() => window.__game!.input.forceReload({ clearLocalState: true }));
+    // The reset is synchronous (src/runtime/recognitionReloadReset.js), so
+    // read the snapshot in the SAME evaluate the reload resolves in — no
+    // RAF tick may run the inert-baseline guard for us.
+    const sameTick = (await page.evaluate(async () => {
+      await window.__game!.input.forceReload({ clearLocalState: true });
+      const game = window.__game as unknown as {
+        interaction?: { recognitionDomFeedback?: unknown };
+      };
+      return { feedback: game.interaction?.recognitionDomFeedback };
+    })) as { feedback: RecognitionDomFeedbackSnapshot };
+    expect(sameTick.feedback).toEqual({
+      active: false,
+      signGlowPx: 0,
+      sealGlowPx: 0,
+      rainRimAlpha: 0,
+      hapticScale: 1,
+      warmth: 0,
+    });
     await readSurface(page);
 
     await page.waitForFunction(
