@@ -260,13 +260,13 @@ The served client also reads `/player-memory` at boot and best-effort writes
 Io-memory facts there after an authoritative save; an unavailable
 `/player-memory` endpoint falls back to the save and never rejects that save.
 
-### Planned (M5): Act III, the Unlit Door
+### Act III, the Unlit Door (shipped)
 
-> **Not on `main` yet.** This section is the design target for the active M5
-> milestone ([BRIEF.md](../../flagship/BRIEF.md#m5--act-iii-the-unlit-door-closes-episode-1-closed-2026-11-19-operator-decision-under-founder-delegation-2026-11-14),
-> Act III in [concept.md](../../flagship/concept.md)). None of the beats,
-> fields or line ids below exist in code today; the diagrams above describe
-> what ships. Move each piece up into those diagrams when its PR merges.
+> **On `main`.** `unlit-door`, `door-choice`, the durable `story.doorChoice`
+> field, the `io-final` line (`aftersign/src/ioFinalDialogue.js`) and the
+> committed "Episode 1 has ended" card are all shipped. Milestone context is in
+> [BRIEF.md](../../flagship/BRIEF.md), and Act III is in
+> [concept.md](../../flagship/concept.md).
 
 ```mermaid
 sequenceDiagram
@@ -279,10 +279,10 @@ sequenceDiagram
   G->>UI: unlit-door (shipped)
   P->>UI: door-choice: official record / private lie / new sign (shipped)
   G->>G: Maud names the rung + its cost from the Act II bell record
-  G->>G: io-final reads first-session packet.sealed + story.doorChoice
-  G->>UI: episode-one-end (planned)
-  G->>S: PUT save (story.doorChoice, story.endingId)
-  Note over G,S: A fresh browser context restores the authoritative save at boot, including the door choice and end-screen id
+  G->>S: PUT save (story.doorChoice)
+  G->>G: resolveIoFinalDialogue(story.firstPacketSealed, story.doorChoice) (shipped)
+  G-->>UI: "Episode 1 has ended" card: data-door-choice, data-io-final-id line, Begin Episode 2 (shipped)
+  Note over G,S: A fresh browser context restores the authoritative save at boot, including the door choice and the io-final line
 ```
 
 Shipped save field: `story.doorChoice` stores one of `keep-official-record`,
@@ -292,16 +292,24 @@ that snapshot at boot and restores the door choice from the save, not browser
 storage.
 
 Shipped beat order after either Act II bell ending: `unlit-door` →
-`door-choice`. `io-final` and `episode-one-end` remain planned. Maud's Unlit Door line takes
+`door-choice` → the `io-final` line on the committed "Episode 1 has ended"
+card (`aftersign/src/maudBellArchive.js`). There is no separate
+`episode-one-end` beat. The committed card is the Episode 1 end screen, and its
+only story control is **Begin Episode 2**. Maud's Unlit Door line takes
 the name rung from the Act II bell record and that record's stated cost. The
 choice is framed as a consequence of the exact name the player made the
 archive remember, not as a generic morality prompt.
 
-Planned `io-final` selection: it reads the first-session seal fact from the
-existing `packet.sealed` record and combines it with `story.doorChoice`. Its
-authored line id comes from this table:
+Shipped `io-final` selection: `resolveIoFinalDialogue` in
+`aftersign/src/ioFinalDialogue.js` combines the first-session seal fact with
+`story.doorChoice`. `main.js` passes `firstPacketSealedForIoFinal()`, which
+returns the persisted `story.firstPacketSealed` and otherwise falls back to Io's
+memory facts. It never reads `packet.sealed`, because the second packet resets
+that field. The card renders the result as `data-io-final-id`, and
+`aftersign/e2e/durable-act-ii-ending.spec.ts` asserts it. The line id comes
+from this table:
 
-| First-session seal (`packet.sealed`) | `keep-official-record` | `protect-private-lie` | `hang-new-sign` |
+| First-session seal (`story.firstPacketSealed`) | `keep-official-record` | `protect-private-lie` | `hang-new-sign` |
 |---|---|---|---|
 | kept (`true`) | `io-final-sealed-official` | `io-final-sealed-private` | `io-final-sealed-sign` |
 | broken (`false`) | `io-final-opened-official` | `io-final-opened-private` | `io-final-opened-sign` |
