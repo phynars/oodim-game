@@ -34,7 +34,7 @@ export const AFTERSIGN_NPC_MEMORY_RECALL_DIALOGUE = [
       scene: "io-return",
       remembers: "packet-sealed",
     },
-    line: "Still sealed. Good. Some doors only learn your name after you refuse them.",
+    line: "Still sealed. Good. The seal came back unbroken.",
     playerMemoryEcho: "Io remembers that you kept the packet sealed.",
     assertionText: "Still sealed.",
   },

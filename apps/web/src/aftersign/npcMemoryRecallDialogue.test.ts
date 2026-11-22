@@ -59,7 +59,7 @@ describe("Aftersign NPC memory recall dialogue (contract)", () => {
           scene: "io-return",
           remembers: "packet-sealed",
         },
-        line: "Still sealed. Good. Some doors only learn your name after you refuse them.",
+        line: "Still sealed. Good. The seal came back unbroken.",
         playerMemoryEcho: "Io remembers that you kept the packet sealed.",
         assertionText: "Still sealed.",
       },
@@ -204,8 +204,9 @@ describe("Aftersign NPC memory recall dialogue (surface wiring)", () => {
     const roundTrip = game?.getStoryState().story.npcMemoryRoundTrip;
     expect(roundTrip?.recallLine?.id).toBe("io-return-sealed");
     expect(roundTrip?.recallLine?.line).toBe(
-      "Still sealed. Good. Some doors only learn your name after you refuse them.",
+      "Still sealed. Good. The seal came back unbroken.",
     );
+    expect(roundTrip?.recallLine?.line).not.toMatch(/refuse|refused/i);
     expect(roundTrip?.recallLine?.assertionText).toBe("Still sealed.");
     expect(roundTrip?.recallLine?.trigger.remembers).toBe("packet-sealed");
   });

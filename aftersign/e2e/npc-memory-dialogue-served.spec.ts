@@ -109,6 +109,8 @@ test.describe("AFTERSIGN NPC memory dialogue — served surface consumer", () =>
       expect.objectContaining({ id: "io-remembers-kiosk-second-action-skipped" }),
     );
     await expect(page.locator("#line")).toHaveText(lastLine!);
+    expect(lastLine).toContain("The seal came back unbroken.");
+    expect(lastLine).not.toMatch(/refuse|refused/i);
 
     // And io_intro_seen has flipped true by boot-tail, which is the
     // branch the dispatcher requires to leave `firstMeeting` behind.
