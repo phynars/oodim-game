@@ -76,12 +76,6 @@ export const renderMaudBellArchiveEnding = (
   card.setAttribute("data-district-light", ending.light);
   card.setAttribute("data-bell-ringing", "true");
   card.style.pointerEvents = "auto";
-  // Keep the complete terminal card inside the phone dialogue scrollport.
-  // The final light line and door control remain readable without a manual
-  // swipe even when preceding dialogue fills the panel.
-  card.style.maxHeight = "100%";
-  card.style.overflowY = "auto";
-
   const title = doc.createElement("h2");
   title.textContent = doorOpen && !doorChoice ? "Unlit Door" : doorChoice ? "Episode 1 has ended" : "Act II — Bell Archive";
   const bell = doc.createElement("p");
@@ -174,9 +168,7 @@ export const renderMaudBellArchiveEnding = (
       choices.append(pair);
     }
     light.after(choices);
-    if (card.isConnected && typeof card.scrollIntoView === "function") {
-      card.scrollIntoView({ block: "nearest", inline: "nearest" });
-    }
+    pinCardInPanel(card);
   };
   door.addEventListener("click", () => {
     onOpenDoor?.();
@@ -188,24 +180,30 @@ export const renderMaudBellArchiveEnding = (
   if (doorOpen) showDoorChoices();
   host.replaceChildren(card);
   ringBell(doc, bell);
-  // #2824: keep the WHOLE ending card visible in the bounded HUD panel after
-  // the choice appends it. Scrolling only the outcome line into view (the
-  // previous target) aligned the panel's bottom edge to that line, so the
-  // dialogue and district-light lines below it stayed under the fold and
-  // needed a swipe (blind playtest 6). `nearest` on the card aligns its
-  // bottom edge to the scrollport when it overflows below.
-  if (typeof card.scrollIntoView === "function") {
-    card.scrollIntoView({ block: "nearest", inline: "nearest" });
-  } else if (typeof outcome.scrollIntoView === "function") {
-    outcome.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }
-  // The Begin Episode 2 control is the card's last row; bring it inside the
-  // card's own scrollport so the phone player can tap it without a swipe.
-  const beginControl = typeof card.querySelector === "function" ? card.querySelector("#beginEpisodeTwo") : null;
-  if (beginControl && typeof beginControl.scrollIntoView === "function") {
-    beginControl.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }
+  // #2870/#2941: pin the bounded `.hud .panel` so the card shows through
+  // its last row (final light line / Begin Episode 2) without a swipe,
+  // but never past the card's own heading. The card has no inner
+  // scrollport, so nothing below the panel can clip it.
+  pinCardInPanel(card);
   return card;
+};
+
+// Scroll the nearest `.panel` ancestor so the card's bottom edge sits at
+// the panel's bottom edge, clamped so the card's top never goes above the
+// panel's top. Falls back to scrollIntoView when there is no panel.
+const pinCardInPanel = (card) => {
+  if (!card || !card.isConnected) return;
+  const panel = typeof card.closest === "function" ? card.closest(".panel") : null;
+  if (!panel || typeof panel.getBoundingClientRect !== "function" || typeof card.getBoundingClientRect !== "function") {
+    if (typeof card.scrollIntoView === "function") card.scrollIntoView({ block: "nearest", inline: "nearest" });
+    return;
+  }
+  const panelRect = panel.getBoundingClientRect();
+  const cardRect = card.getBoundingClientRect();
+  const toBottom = cardRect.bottom - panelRect.bottom;
+  const toTop = cardRect.top - panelRect.top;
+  const delta = Math.min(toBottom, toTop);
+  if (toBottom > 0 || toTop < 0) panel.scrollTop += delta;
 };
 
 // Bell ring: a short WAAPI swing on the bell line. Skipped when the
