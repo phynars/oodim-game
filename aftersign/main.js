@@ -3514,7 +3514,10 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
       );
       button.setAttribute("data-mloop-job-id", mloopCopy.id);
           button.setAttribute("data-mloop-memory-gate", mloopAction.memoryGate);
-          button.setAttribute("aria-label", mloopAction.label);
+          // The accessible name must identify the offer the player can see,
+          // rather than the memory-gated story action behind it.
+          button.setAttribute("aria-label", `${offer.label} · ${offer.routeRisk} risk`);
+          button.setAttribute("aria-pressed", "false");
           stampJobOfferData(button, offer.id);
           button.textContent = `${offer.label} · ${offer.routeRisk} risk`;
           if (window.innerWidth <= 480) {
@@ -3592,6 +3595,7 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
               offerId: offer.id,
             });
             state.player.selectedJobOfferId = offer.id;
+            button.setAttribute("aria-pressed", "true");
             // A job selection answers on one canonical acknowledgement
             // surface. `#line` remains owned by the beat dialogue table;
             // `stampJobAcceptedLine` owns the per-jobId authored receipt.
