@@ -528,6 +528,33 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     await expect(page.locator('[data-ending-hidden="true"]')).toHaveCount(0);
   });
 
+  test("Start fresh clears the prior delivery before replaying Episode 1", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
+    await page.setViewportSize(PHONE_VIEWPORT);
+    const slot = `episode-one-start-fresh-memory-${Date.now()}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await waitForVersion(page);
+
+    await runToEnding(page, "sealed");
+    await page.locator("#resetButton").click();
+
+    await expect(page.locator("#packetButton")).toContainText("Blue packet");
+    await expect(page.locator("#packetButton")).not.toContainText("Red tag");
+    await expect(page.locator("#line")).toHaveText(
+      "Keep it sealed if you want the city to trust you. I will remember which version of you touches that blue kiosk.",
+    );
+
+    // Reload verifies that the fresh projection persists beyond this page's
+    // in-memory reset; this spec does not independently inspect save requests.
+    await page.reload({ waitUntil: "load" });
+    await waitForVersion(page);
+    await expect(page.locator("#packetButton")).toContainText("Blue packet");
+    await expect(page.locator("#packetButton")).not.toContainText("Red tag");
+    await expect(page.locator("#line")).toHaveText(
+      "Keep it sealed if you want the city to trust you. I will remember which version of you touches that blue kiosk.",
+    );
+  });
+
   test("offered red tag without an acceptance tap never becomes an accepted-memory ending", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     await page.setViewportSize(PHONE_VIEWPORT);
