@@ -28,7 +28,11 @@ test.describe("job-step progress hierarchy", () => {
       "aria-description",
       "Optional response; this does not advance the job",
     );
-    await expect(page.locator("#vigilChoice button:enabled")).toHaveCount(0);
+    // The vigil is a real choice on this beat (#2261/#2577): its buttons
+    // must stay tappable, and none of them may claim the primary slot.
+    await expect(page.locator("#vigilChoice")).toBeVisible();
+    await expect(page.locator("#vigilChoice button:enabled")).toHaveCount(3);
+    await expect(page.locator('#vigilChoice [data-aftersign-choice-kind="primary"]')).toHaveCount(0);
 
     await tapAdvance(page, '[data-aftersign-choice-kind="primary"]');
     await expect(page.locator('[data-beat-id="packet-offered"]')).toBeVisible();

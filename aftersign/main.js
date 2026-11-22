@@ -3119,15 +3119,6 @@ const renderText = () => {
     if (vigilChoice.dataset.visible !== String(vigilVisible)) {
       vigilChoice.dataset.visible = String(vigilVisible);
     }
-    vigilChoice.dataset.aftersignChoiceKind = "flavour";
-    for (const button of vigilChoice.querySelectorAll("button")) {
-      button.disabled = isNextJobBeat;
-      if (isNextJobBeat) {
-        button.setAttribute("aria-description", "Available after the red tag is delivered");
-      } else {
-        button.removeAttribute("aria-description");
-      }
-    }
   }
 
   // #1372 — M-LOOP-E1: the ROUTE/RISK choice is only offered at
