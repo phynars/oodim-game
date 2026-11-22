@@ -736,9 +736,20 @@
       .slice-save-controls {
         display: flex;
         gap: 10px;
-        margin-top: 20px;
+        margin-top: 28px;
+        padding-top: 16px;
+        border-top: 1px solid rgba(255, 176, 142, 0.42);
         flex-wrap: wrap;
         pointer-events: auto;
+      }
+
+      .slice-save-controls::before {
+        content: "Start over";
+        flex-basis: 100%;
+        color: #ffb08e;
+        font-size: 0.72rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
       }
 
       /* The start card is the only interactive surface before a player
