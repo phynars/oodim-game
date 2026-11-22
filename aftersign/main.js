@@ -1702,7 +1702,7 @@ const lineForBeat = () => {
         const accept = document.createElement("button");
         accept.type = "button";
         accept.id = "acceptEpisodeTwoJob";
-        accept.textContent = "Accept";
+        accept.textContent = `Accept ${job.name}`;
         accept.style.pointerEvents = "auto";
         accept.style.minHeight = "44px";
         const accepted = state.delivery.id === job.deliveryId;

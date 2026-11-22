@@ -128,14 +128,19 @@ export const renderMaudBellArchiveEnding = (
         light.after(completion);
       }
       if (typeof onBeginEpisodeTwo === "function") {
+        const continuation = doc.createElement("p");
+        continuation.className = "episode-one-completion__continuation";
+        continuation.textContent = "Episode 1 complete. Episode 2 is ready.";
         const beginEpisodeTwo = doc.createElement("button");
         beginEpisodeTwo.type = "button";
         beginEpisodeTwo.id = "beginEpisodeTwo";
         beginEpisodeTwo.textContent = "Begin Episode 2";
         beginEpisodeTwo.style.pointerEvents = "auto";
-        beginEpisodeTwo.style.minHeight = "44px";
+        beginEpisodeTwo.style.minHeight = "56px";
+        beginEpisodeTwo.style.fontSize = "1.1rem";
+        beginEpisodeTwo.style.fontWeight = "700";
         beginEpisodeTwo.addEventListener("click", onBeginEpisodeTwo);
-        card.appendChild(beginEpisodeTwo);
+        card.append(continuation, beginEpisodeTwo);
       }
       return;
     }
