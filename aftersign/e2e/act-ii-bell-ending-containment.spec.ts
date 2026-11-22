@@ -48,10 +48,24 @@ test.describe("Act II bell ending containment (#2870)", () => {
       const card = await endingByVisibleTaps(page, ending);
       const finalLine = card.locator(".episode-one-ending__light");
       await expect(finalLine).toBeVisible();
-      expect(await finalLine.evaluate((node) => {
+      // PR #2942 F2: the same panel-clip contract as the Episode 2 spec —
+      // no inner scrollport between the line and `.panel`, inside the
+      // panel and viewport, and not covered at its centre.
+      await expect.poll(async () => finalLine.evaluate((node) => {
+        const panel = node.closest(".panel");
+        if (!panel) return false;
+        for (let ancestor = node.parentElement; ancestor && ancestor !== panel; ancestor = ancestor.parentElement) {
+          if (["auto", "scroll", "hidden", "clip"].includes(getComputedStyle(ancestor).overflowY)) return false;
+        }
         const rect = node.getBoundingClientRect();
-        return rect.top >= 0 && rect.bottom <= window.innerHeight;
-      })).toBe(true);
+        const panelRect = panel.getBoundingClientRect();
+        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return rect.top >= 0
+          && rect.bottom <= window.innerHeight
+          && rect.top >= panelRect.top
+          && rect.bottom <= panelRect.bottom
+          && Boolean(hit && (hit === node || node.contains(hit)));
+      }), { timeout: WAIT_MS }).toBe(true);
     }
   });
 

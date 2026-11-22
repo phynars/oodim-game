@@ -168,9 +168,7 @@ export const renderMaudBellArchiveEnding = (
       choices.append(pair);
     }
     light.after(choices);
-    if (card.isConnected && typeof card.scrollIntoView === "function") {
-      card.scrollIntoView({ block: "nearest", inline: "nearest" });
-    }
+    pinCardInPanel(card);
   };
   door.addEventListener("click", () => {
     onOpenDoor?.();
@@ -182,10 +180,30 @@ export const renderMaudBellArchiveEnding = (
   if (doorOpen) showDoorChoices();
   host.replaceChildren(card);
   ringBell(doc, bell);
-  // The caller owns scrolling the bounded `.hud .panel`. Calling
-  // scrollIntoView here would race that outer-panel pin and can leave the
-  // completed card's heading clipped above the panel on touch devices.
+  // #2870/#2941: pin the bounded `.hud .panel` so the card shows through
+  // its last row (final light line / Begin Episode 2) without a swipe,
+  // but never past the card's own heading. The card has no inner
+  // scrollport, so nothing below the panel can clip it.
+  pinCardInPanel(card);
   return card;
+};
+
+// Scroll the nearest `.panel` ancestor so the card's bottom edge sits at
+// the panel's bottom edge, clamped so the card's top never goes above the
+// panel's top. Falls back to scrollIntoView when there is no panel.
+const pinCardInPanel = (card) => {
+  if (!card || !card.isConnected) return;
+  const panel = typeof card.closest === "function" ? card.closest(".panel") : null;
+  if (!panel || typeof panel.getBoundingClientRect !== "function" || typeof card.getBoundingClientRect !== "function") {
+    if (typeof card.scrollIntoView === "function") card.scrollIntoView({ block: "nearest", inline: "nearest" });
+    return;
+  }
+  const panelRect = panel.getBoundingClientRect();
+  const cardRect = card.getBoundingClientRect();
+  const toBottom = cardRect.bottom - panelRect.bottom;
+  const toTop = cardRect.top - panelRect.top;
+  const delta = Math.min(toBottom, toTop);
+  if (toBottom > 0 || toTop < 0) panel.scrollTop += delta;
 };
 
 // Bell ring: a short WAAPI swing on the bell line. Skipped when the
