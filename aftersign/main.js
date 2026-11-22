@@ -1726,6 +1726,30 @@ const lineForBeat = () => {
           publishState();
         });
         jobCard.append(jobName, jobBrief, offer, accept);
+        if (!accepted) {
+          // Blind M6 closeout runs 97d3036a, f79363ac and 52b80054 each
+          // stopped at this offer and never saw Niko, who was drawn only
+          // after Accept. Niko now meets the player on arrival at the
+          // Night Post and says the stored route. The card sits above the
+          // job, so the bottom-pinned Accept stays in view. The shortcut
+          // choices still appear only after Accept (below).
+          const nikoGreeting = document.createElement("section");
+          nikoGreeting.id = "nikoThread";
+          nikoGreeting.setAttribute("data-npc", "niko-thread");
+          nikoGreeting.setAttribute("data-niko-greeting", "night-post");
+          const greetingLine = document.createElement("p");
+          greetingLine.setAttribute(
+            "data-niko-route",
+            state.player.routeRisk?.lastRoute === "safe"
+              ? "safe"
+              : state.player.routeRisk?.lastRoute === "fast"
+                ? "risky"
+                : "none",
+          );
+          greetingLine.textContent = nikoRouteLine(state.player.routeRisk);
+          nikoGreeting.append(greetingLine);
+          host.append(nikoGreeting);
+        }
         host.append(jobCard);
         if (accepted) {
           const nikoCard = document.createElement("section");
