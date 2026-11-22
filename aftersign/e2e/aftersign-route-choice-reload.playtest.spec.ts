@@ -231,9 +231,29 @@ test.describe("AFTERSIGN route-choice reload playtest", () => {
       await page.reload({ waitUntil: "load" });
       await waitForBeat(page, "packet-choice");
 
-      // Player path: leave both kiosk-route buttons untouched, then tap the
-      // packet and the visible delivery control. The resulting delivery has
-      // `secondAction === null`, so it must not display either false receipt.
+      // Visible-player-input proof on the RESTORED packet-choice: tap the
+      // first route-memory choice inside `#routeRiskChoice` and assert the
+      // confirmation stamp echoes it — a frozen remount would not update it.
+      const routeChoice = page.locator("#routeRiskChoice");
+      const firstRouteMemoryChoice = routeChoice.locator("button").first();
+      await expect(
+        firstRouteMemoryChoice,
+        "restored packet-choice should expose a tappable route-memory choice button",
+      ).toBeVisible({ timeout: WAIT_MS });
+      const choiceName = (await firstRouteMemoryChoice.innerText()).trim();
+      expect(
+        choiceName.length,
+        "route-memory choice button should carry a visible label before we tap it",
+      ).toBeGreaterThan(0);
+      await firstRouteMemoryChoice.click();
+      await expect(
+        routeChoice.locator("[data-aftersign-route-memory-confirmation]"),
+        "tapping a route-memory choice on a restored packet-choice should surface its label in the confirmation stamp",
+      ).toHaveText(choiceName, { timeout: WAIT_MS });
+
+      // #2944 player path: leave both kiosk-route buttons untouched, then tap
+      // the packet and the visible delivery control. The resulting delivery
+      // has `secondAction === null`, so neither false receipt may be drawn.
       const packet = page.locator("#packetButton");
       await expect(packet).toBeVisible({ timeout: WAIT_MS });
       await packet.click();
