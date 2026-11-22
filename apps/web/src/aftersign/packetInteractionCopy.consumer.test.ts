@@ -130,6 +130,9 @@ describe("#packetButton served-surface copy contract (drives real aftersign/inde
     expect(packetButton.getAttribute("data-packet-button-copy-state")).toBe(
       "sealed",
     );
+    expect(packetButton.querySelector("span")?.textContent).toContain(
+      "Your choice is locked",
+    );
   });
 
   it("flips the visible <span> to the opened line after a tap-driven OPENED commit", () => {
