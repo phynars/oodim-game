@@ -3047,7 +3047,13 @@ const renderText = () => {
       ioLedgerLine.setAttribute("data-io-ledger-fact", ledgerStamp);
     }
   }
-  const routeChoiceVisible = isPacketChoiceBeat || isPacketDeliveredBeat || isReturnRecognitionBeat || isReturnToneChoiceBeat || isNextJobBeat;
+  // A post-delivery route receipt exists only when the player explicitly
+  // chose one of the kiosk actions. Leaving untouched controls visible
+  // makes them read as a false record of the player's choice.
+  const routeChoiceVisible =
+    isPacketChoiceBeat ||
+    ((isPacketDeliveredBeat || isReturnRecognitionBeat || isReturnToneChoiceBeat || isNextJobBeat) &&
+      state.player.secondAction !== null);
   if (routeChoice.dataset.visible !== String(routeChoiceVisible)) {
     routeChoice.dataset.visible = String(routeChoiceVisible);
   }

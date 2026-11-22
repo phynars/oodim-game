@@ -231,35 +231,25 @@ test.describe("AFTERSIGN route-choice reload playtest", () => {
       await page.reload({ waitUntil: "load" });
       await waitForBeat(page, "packet-choice");
 
-      // Visible-player-input proof. The played-input guard
-      // (`playtest-input-surface-guard.spec.ts`) requires every
-      // `*.playtest.spec.ts` to carry a real `.click/.tap/.press`;
-      // without one, the whole suite fails before our restore
-      // assertions even run. We tap the first route-memory choice
-      // inside `#routeRiskChoice` — same shape
-      // `packet-choice-layout-and-route-memory-feedback.spec.ts`
-      // drives — and then assert the
-      // `data-aftersign-route-memory-confirmation` label echoes the
-      // tapped choice name. That echo is the one assertion proving
-      // the restored `packet-choice` is a LIVE interactive beat, not
-      // a static DOM painted by a stale last-render snapshot: a
-      // frozen remount wouldn't update the confirmation label.
-      const routeChoice = page.locator("#routeRiskChoice");
-      const firstRouteMemoryChoice = routeChoice.locator("button").first();
+      // Player path: leave both kiosk-route buttons untouched, then tap the
+      // packet and the visible delivery control. The resulting delivery has
+      // `secondAction === null`, so it must not display either false receipt.
+      const packet = page.locator("#packetButton");
+      await expect(packet).toBeVisible({ timeout: WAIT_MS });
+      await packet.click();
+      const deliverPacket = page.locator("#deliverButton");
+      await expect(deliverPacket).toBeVisible({ timeout: WAIT_MS });
+      await deliverPacket.click();
+
+      const kioskRouteChoice = page.locator("#routeChoice");
       await expect(
-        firstRouteMemoryChoice,
-        "restored packet-choice should expose a tappable route-memory choice button",
-      ).toBeVisible({ timeout: WAIT_MS });
-      const choiceName = (await firstRouteMemoryChoice.innerText()).trim();
-      expect(
-        choiceName.length,
-        "route-memory choice button should carry a visible label before we tap it",
-      ).toBeGreaterThan(0);
-      await firstRouteMemoryChoice.click();
+        kioskRouteChoice.locator("#acknowledgeRouteButton"),
+        "I listened must be removed after delivery when secondAction is null",
+      ).not.toBeVisible({ timeout: WAIT_MS });
       await expect(
-        routeChoice.locator("[data-aftersign-route-memory-confirmation]"),
-        "tapping a route-memory choice on a restored packet-choice should surface its label in the confirmation stamp",
-      ).toHaveText(choiceName, { timeout: WAIT_MS });
+        kioskRouteChoice.locator("#skipRouteButton"),
+        "I ran early must be removed after delivery when secondAction is null",
+      ).not.toBeVisible({ timeout: WAIT_MS });
     },
   );
 });
