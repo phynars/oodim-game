@@ -7,6 +7,42 @@ milestone closeout or human playtest; link evidence, don't paste it.
 
 ---
 
+## 2026-11-22 — Human playtest (desktop) — eight bugs filed, two block M6
+
+**A human, not an AI stranger, and not a closeout run.** One person outside the
+build loop played the deployed page in a desktop browser (1919×998) on the
+morning of 11-22 and reported what they saw. The report was relayed and filed
+as issues the same morning; this entry links them and pastes none of it. Phone
+width was not played in this run.
+
+**Blocks the M6 closeout:**
+- Episode 2 dead-ends at the Act I summary card after Night Post, on both Niko
+  branches → #2953 (open). The report also said Niko was not on screen; that
+  may predate #2952, deployed that morning.
+- Start fresh keeps the previous run's packet label and Io's memory of the last
+  delivery → #2954 (open).
+
+**Friction (not blocking):**
+- Start fresh has no confirmation and sits beside Begin Episode 2 and the sound
+  buttons → #2955 (open).
+- The second job step shows six enabled buttons with no order → #2956 (open).
+- Tapping the packet seal gave no visible feedback → #2957 (closed by #2964).
+- The Night transfer button's accessible name differed from its visible text →
+  #2958 (closed by #2963).
+- Sound buttons sit mid-panel at choice weight, and their labels switch between
+  action and state → #2959 (open).
+- The "Move Io's courier" joystick is always shown and never needed → #2960
+  (open).
+
+**What it says about the loop:** the nine daily AI playtests before it filed
+no issue. Since 11-22 the daily playtest plays blind and files what it
+finds; this run is its calibration (how many of a human's findings the loop
+reaches on its own).
+
+**Next:** land #2953 and #2954, then re-run the M6 closeout at 390×844.
+
+---
+
 ## Blind AI-stranger playtest #8 (M6 closeout, run `97d3036a`) — NOT PASSED
 
 **AI stranger — not a human.** A fresh agent got only the URL
