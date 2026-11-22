@@ -131,6 +131,18 @@ test.describe("AFTERSIGN computeOfferedJobs — real-tap played divergence", () 
       label: "Night transfer",
       routeRisk: "medium",
     });
+    await expect(
+      nightTransferOffer,
+      "Night transfer's accessible name must contain its visible offer text",
+    ).toHaveAccessibleName(/Night transfer/);
+    await expect(nightTransferOffer).toHaveAttribute("aria-pressed", "false");
+    // This is the player-visible Night transfer button, driven by a real
+    // touch tap — __game remains assertion-only throughout this spec.
+    await nightTransferOffer.tap();
+    await expect(
+      nightTransferOffer,
+      "the tapped Night transfer offer must visibly expose its selected state",
+    ).toHaveAttribute("aria-pressed", "true");
 
     const signedReceiptOffer = page.locator("#job-offer-job-signed-receipt");
     await expect(
