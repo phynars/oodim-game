@@ -1042,6 +1042,15 @@
         }
       }
 
+      /* Styles the existing sealed-result state on the packet control after
+         the tap's brief press envelope ends. This is a durable acknowledgement,
+         not a transient pointer effect. */
+      #packetButton[data-packet-button-copy-state="sealed"] {
+        border-color: rgba(141, 205, 255, 0.96);
+        background: rgba(29, 63, 94, 0.94);
+        box-shadow: 0 0 20px rgba(104, 188, 255, 0.48);
+      }
+
       /* Route-choice press envelope — SHIPPED CONSUMER of the four
          --aftersign-route-choice-press-* variables (PR #1806). The
          two route-memory buttons inside `#routeChoice`
