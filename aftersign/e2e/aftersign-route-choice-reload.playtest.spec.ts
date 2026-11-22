@@ -231,19 +231,9 @@ test.describe("AFTERSIGN route-choice reload playtest", () => {
       await page.reload({ waitUntil: "load" });
       await waitForBeat(page, "packet-choice");
 
-      // Visible-player-input proof. The played-input guard
-      // (`playtest-input-surface-guard.spec.ts`) requires every
-      // `*.playtest.spec.ts` to carry a real `.click/.tap/.press`;
-      // without one, the whole suite fails before our restore
-      // assertions even run. We tap the first route-memory choice
-      // inside `#routeRiskChoice` — same shape
-      // `packet-choice-layout-and-route-memory-feedback.spec.ts`
-      // drives — and then assert the
-      // `data-aftersign-route-memory-confirmation` label echoes the
-      // tapped choice name. That echo is the one assertion proving
-      // the restored `packet-choice` is a LIVE interactive beat, not
-      // a static DOM painted by a stale last-render snapshot: a
-      // frozen remount wouldn't update the confirmation label.
+      // Visible-player-input proof on the RESTORED packet-choice: tap the
+      // first route-memory choice inside `#routeRiskChoice` and assert the
+      // confirmation stamp echoes it — a frozen remount would not update it.
       const routeChoice = page.locator("#routeRiskChoice");
       const firstRouteMemoryChoice = routeChoice.locator("button").first();
       await expect(
@@ -260,6 +250,26 @@ test.describe("AFTERSIGN route-choice reload playtest", () => {
         routeChoice.locator("[data-aftersign-route-memory-confirmation]"),
         "tapping a route-memory choice on a restored packet-choice should surface its label in the confirmation stamp",
       ).toHaveText(choiceName, { timeout: WAIT_MS });
+
+      // #2944 player path: leave both kiosk-route buttons untouched, then tap
+      // the packet and the visible delivery control. The resulting delivery
+      // has `secondAction === null`, so neither false receipt may be drawn.
+      const packet = page.locator("#packetButton");
+      await expect(packet).toBeVisible({ timeout: WAIT_MS });
+      await packet.click();
+      const deliverPacket = page.locator("#deliverButton");
+      await expect(deliverPacket).toBeVisible({ timeout: WAIT_MS });
+      await deliverPacket.click();
+
+      const kioskRouteChoice = page.locator("#routeChoice");
+      await expect(
+        kioskRouteChoice.locator("#acknowledgeRouteButton"),
+        "I listened must be removed after delivery when secondAction is null",
+      ).not.toBeVisible({ timeout: WAIT_MS });
+      await expect(
+        kioskRouteChoice.locator("#skipRouteButton"),
+        "I ran early must be removed after delivery when secondAction is null",
+      ).not.toBeVisible({ timeout: WAIT_MS });
     },
   );
 });

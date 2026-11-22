@@ -3048,8 +3048,30 @@ const renderText = () => {
     }
   }
   const routeChoiceVisible = isPacketChoiceBeat || isPacketDeliveredBeat || isReturnRecognitionBeat || isReturnToneChoiceBeat || isNextJobBeat;
-  if (routeChoice.dataset.visible !== String(routeChoiceVisible)) {
-    routeChoice.dataset.visible = String(routeChoiceVisible);
+  // #2944: at packet-delivered the two kiosk buttons are a receipt, not a
+  // live fork. A button the player never tapped must not be drawn there
+  // (a disabled "I ran early" reads as a choice made for them). When
+  // `secondAction === null` neither was tapped, so the whole row hides.
+  // The later beats reuse the same buttons as live return/next-job
+  // choices, so they stay visible there.
+  const routeChoiceShown =
+    routeChoiceVisible && !(isPacketDeliveredBeat && state.player.secondAction === null);
+  if (routeChoice.dataset.visible !== String(routeChoiceShown)) {
+    routeChoice.dataset.visible = String(routeChoiceShown);
+  }
+  // Same receipt rule per button: at packet-delivered only the tapped
+  // kiosk button stays drawn. Other beats restore both.
+  const hideAcknowledgeReceipt =
+    isPacketDeliveredBeat && state.player.secondAction !== SECOND_ACTION.DONE;
+  const hideSkipReceipt =
+    isPacketDeliveredBeat && state.player.secondAction !== SECOND_ACTION.SKIPPED;
+  const acknowledgeDisplay = hideAcknowledgeReceipt ? "none" : "";
+  const skipDisplay = hideSkipReceipt ? "none" : "";
+  if (acknowledgeRouteButton.style.display !== acknowledgeDisplay) {
+    acknowledgeRouteButton.style.display = acknowledgeDisplay;
+  }
+  if (skipRouteButton.style.display !== skipDisplay) {
+    skipRouteButton.style.display = skipDisplay;
   }
 
   // M3-E1 (#2261) — Episode 1 vigil surface visibility. The two
