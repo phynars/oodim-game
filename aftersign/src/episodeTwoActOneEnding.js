@@ -1,8 +1,8 @@
 import { episodeTwoJobForStory } from "./episodeTwoJobs.js";
 
 const ANSWER_COPY = Object.freeze({
-  take: "You took Niko's shortcut.",
-  refuse: "You refused Niko's shortcut.",
+  take: "Niko: You took the shortcut. I kept the registry clerk looking the other way—once.",
+  refuse: "Niko: You refused the shortcut. The long way cost time, but not your name.",
 });
 
 export const resolveEpisodeTwoActOneEnding = ({ story, delivery } = {}) => {
@@ -17,7 +17,7 @@ export const resolveEpisodeTwoActOneEnding = ({ story, delivery } = {}) => {
   });
 };
 
-export const renderEpisodeTwoActOneEnding = (doc, ending) => {
+export const renderEpisodeTwoActOneEnding = (doc, ending, onContinue) => {
   if (!doc || !ending) return null;
   const host = doc.getElementById("episodeOneEnding");
   if (!host) return null;
@@ -36,7 +36,15 @@ export const renderEpisodeTwoActOneEnding = (doc, ending) => {
   job.textContent = `Carried: ${ending.jobName}.`;
   const answer = doc.createElement("p");
   answer.textContent = ending.answerLine;
-  card.append(title, job, answer);
+  answer.setAttribute("data-npc", "niko-thread");
+  const continueButton = doc.createElement("button");
+  continueButton.type = "button";
+  continueButton.textContent = "Return to the Night Post kiosk";
+  continueButton.setAttribute("data-episode-two-next-step", "night-post-kiosk");
+  continueButton.addEventListener("click", () => {
+    onContinue?.();
+  });
+  card.append(title, job, answer, continueButton);
   host.append(card);
   const line = doc.getElementById("line");
   line?.replaceChildren();

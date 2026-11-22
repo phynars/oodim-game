@@ -2,7 +2,8 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 
 const WAIT = 15_000;
 
-test.describe("Niko Thread shortcut (#2926)", () => {
+// Served phone playtest: uses only visible taps through both Niko outcomes.
+test.describe("Niko Thread shortcut continuation (#2953)", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
   for (const [route, routeText, answer, answerText, door, jobName] of [
@@ -29,13 +30,14 @@ test.describe("Niko Thread shortcut (#2926)", () => {
       await expect(ending).toContainText("Episode 2 — Act I");
       await expect(ending).toContainText(jobName);
       await expect(ending).toHaveAttribute("data-niko-shortcut-answer", answer);
+      await expect(ending.locator('[data-npc="niko-thread"]')).toContainText(
+        answer === "take" ? "registry clerk" : "long way",
+      );
+      const nextStep = ending.locator('[data-episode-two-next-step="night-post-kiosk"]');
+      await expect(nextStep).toBeVisible();
       const box = await ending.boundingBox();
       expect(box).not.toBeNull();
       expect(box!.y + box!.height).toBeLessThanOrEqual(844);
-      await expect(page.locator("[data-niko-shortcut-choice]")).toHaveCount(0);
-      const reset = page.locator("#resetButton");
-      await expect(reset).toBeVisible();
-      await expect(reset).toBeEnabled();
       const freshContext = await browser.newContext({
         viewport: { width: 390, height: 844 },
         hasTouch: true,
@@ -48,6 +50,12 @@ test.describe("Niko Thread shortcut (#2926)", () => {
       await expect(restoredEnding).toContainText(jobName);
       await expect(restoredEnding).toHaveAttribute("data-niko-shortcut-answer", answer);
       await freshContext.close();
+      await nextStep.tap();
+      await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toBeVisible({ timeout: WAIT });
+      await expect(page.locator("[data-niko-shortcut-choice]")).toHaveCount(2);
+      const reset = page.locator("#resetButton");
+      await expect(reset).toBeVisible();
+      await expect(reset).toBeEnabled();
     });
   }
 });
@@ -70,8 +78,6 @@ async function deliverOffered(page: Page, jobId: string, route?: "safe" | "risky
   if (route === "safe") {
     await tap(page, 'button[data-aftersign-tap-choice="take-the-long-way"]');
   } else if (route === "risky") {
-    // The fresh tray offers recovery/safe actions. The first visible tap
-    // changes the offered set; the second is the visible fast-route action.
     await tap(page, 'button[data-aftersign-tap-choice="take-the-long-way"]');
     const shortcut = page.locator('button[data-aftersign-tap-choice="take-the-shortcut"]');
     await expect(shortcut).toBeVisible({ timeout: WAIT });
