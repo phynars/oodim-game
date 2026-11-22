@@ -3119,6 +3119,15 @@ const renderText = () => {
     if (vigilChoice.dataset.visible !== String(vigilVisible)) {
       vigilChoice.dataset.visible = String(vigilVisible);
     }
+    vigilChoice.dataset.aftersignChoiceKind = "flavour";
+    for (const button of vigilChoice.querySelectorAll("button")) {
+      button.disabled = isNextJobBeat;
+      if (isNextJobBeat) {
+        button.setAttribute("aria-description", "Available after the red tag is delivered");
+      } else {
+        button.removeAttribute("aria-description");
+      }
+    }
   }
 
   // #1372 — M-LOOP-E1: the ROUTE/RISK choice is only offered at
@@ -3819,10 +3828,14 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
     stampAftersignChoice(deliverButton, "deliver-packet");
     for (const button of [acknowledgeRouteButton, skipRouteButton]) {
       button.setAttribute("aria-pressed", "false");
+      button.dataset.aftersignChoiceKind = "flavour";
+      button.setAttribute("aria-description", "Optional response; this does not advance the job");
+      button.style.backgroundColor = "transparent";
+      button.style.borderColor = "rgba(255, 255, 255, 0.35)";
       delete button.dataset.aftersignSelected;
-      button.style.backgroundColor = "";
-      button.style.borderColor = "";
     }
+    deliverButton.dataset.aftersignChoiceKind = "primary";
+    deliverButton.setAttribute("aria-description", "Next job step");
     // PR #1236: same cleanup as above — no recognition-beat stamps
     // should leak into a beat where the buttons carry different
     // choice ids.
@@ -3836,6 +3849,15 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
     stampAftersignChoice(deliverButton, "deliver-packet");
     acknowledgeRouteButton.disabled = true;
     skipRouteButton.disabled = true;
+  }
+
+  if (!isNextJobBeat) {
+    for (const button of [acknowledgeRouteButton, skipRouteButton, deliverButton]) {
+      delete button.dataset.aftersignChoiceKind;
+      button.removeAttribute("aria-description");
+      button.style.backgroundColor = "";
+      button.style.borderColor = "";
+    }
   }
 
   const routeMemory = state.player.secondAction === SECOND_ACTION.DONE
