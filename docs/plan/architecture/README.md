@@ -260,13 +260,13 @@ The served client also reads `/player-memory` at boot and best-effort writes
 Io-memory facts there after an authoritative save; an unavailable
 `/player-memory` endpoint falls back to the save and never rejects that save.
 
-### Planned (M5): Act III, the Unlit Door
+### Act III, the Unlit Door — shipped choices and planned ending
 
-> **Not on `main` yet.** This section is the design target for the active M5
-> milestone ([BRIEF.md](../../flagship/BRIEF.md#m5--act-iii-the-unlit-door-closes-episode-1-closed-2026-11-19-operator-decision-under-founder-delegation-2026-11-14),
-> Act III in [concept.md](../../flagship/concept.md)). None of the beats,
-> fields or line ids below exist in code today; the diagrams above describe
-> what ships. Move each piece up into those diagrams when its PR merges.
+> **Current M6 context.** `unlit-door`, `door-choice`, and the durable
+> `story.doorChoice` field are shipped on `main`. The remaining Act III work is
+> the planned `io-final` selection and `episode-one-end` resolution, tracked
+> alongside the active milestone context in [BRIEF.md](../../flagship/BRIEF.md)
+> and Act III in [concept.md](../../flagship/concept.md).
 
 ```mermaid
 sequenceDiagram
