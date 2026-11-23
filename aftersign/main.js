@@ -958,6 +958,16 @@ const offeredJobs = document.querySelector("#offeredJobs");
 const vigilChoice = document.querySelector("#vigilChoice");
 const deliverButton = document.querySelector("#deliverButton");
 const soundButton = document.querySelector("#soundButton");
+// #2986: the sound control is visible before boot finishes awaiting
+// /player-memory, but its real handler is wired much later in this module.
+// Listen from here and buffer a tap that lands in that window, so a slow
+// deployed endpoint can't swallow the visitor's first sound tap.
+let soundButtonHandler = null;
+let soundButtonPendingClick = false;
+soundButton?.addEventListener("click", () => {
+  if (soundButtonHandler) soundButtonHandler();
+  else soundButtonPendingClick = true;
+});
 const resetButton = document.querySelector("#resetButton");
 const movePad = document.querySelector("#movePad");
 const movePadKnob = document.querySelector("#movePadKnob");
@@ -6221,14 +6231,18 @@ window.addEventListener("keyup", (event) => {
   pressedKeys.delete(event.code);
   syncKeyboardInput();
 });
-soundButton.addEventListener("click", () => {
+soundButtonHandler = () => {
   const controller = getAudioController();
   if (state._runtime.audio.musicStarted) {
     void controller.toggleMusic();
   } else {
     void controller.enableAudio();
   }
-});
+};
+if (soundButtonPendingClick) {
+  soundButtonPendingClick = false;
+  soundButtonHandler();
+}
 // #soundButton is the single music control; syncMusicButton owns its label.
 let resetConfirmationPending = false;
 let resetConfirmationTimeout = null;
