@@ -49,6 +49,8 @@ export default defineConfig({
       "aftersign/src/episodeOneEnding.test.js",
       // Io's final Act III line keyed by first-packet seal + door choice
       "aftersign/src/ioFinalDialogue.test.js",
+      // #2988 — Niko names the route label the player tapped
+      "aftersign/src/nikoThread.test.js",
       // #2710 — return-action feedback controller extracted from main.js
       "aftersign/src/presentation/ioReturnActionFeedbackController.test.js",
       // #2766 — per-player memory replica must not seed a cold slot
