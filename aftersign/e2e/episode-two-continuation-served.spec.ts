@@ -167,17 +167,30 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await runToEnding(page);
     await page.locator("#beginEpisodeTwo").tap();
     await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toBeVisible({ timeout: WAIT_MS });
-    // First tap arms the confirmation (#2955); the second one resets.
+    // First tap arms the confirmation; the second visible pointer tap resets.
     await tapVisible(page, "#resetButton");
     await expect(page.locator("#resetButton")).toHaveText("Confirm start fresh");
     await tapVisible(page, "#resetButton");
     await expect(page.locator("#episodeOneEnding[data-continuation]")).toHaveCount(0, { timeout: WAIT_MS });
     await expect(page.locator("#episodeOneEnding")).not.toContainText("Night Post");
     await waitForBeat(page, "packet-offered");
+    // #2968: a completed Episode 2 run used to leave its old red-tag action
+    // surface mounted after the visible Start fresh tap. A fresh player may
+    // only touch the new safe offer, never resume an old packet or seal state.
+    await expect(page.locator('#offeredJobs button[data-offered-job-id="job-safe-delivery"]')).toBeVisible();
+    await expect(page.locator('button[data-offered-job-id*="red-tag"]')).toHaveCount(0);
+    await expect(page.locator("#packetButton")).toContainText("Blue packet");
+    await expect(page.locator("#packetButton")).toHaveAttribute("data-packet-job", "blue-packet");
+    await tapVisible(page, "#packetButton");
+    await waitForBeat(page, "packet-choice");
+    await expect(page.locator('button[data-choice-id="acknowledge-kiosk"]')).toBeVisible();
+    await expect(page.locator('button[data-choice-id="deliver-packet"]')).toHaveCount(0);
     await page.reload({ waitUntil: "load" });
     await waitForBeat(page, "packet-offered");
     await expect(page.locator("#episodeOneEnding[data-continuation]")).toHaveCount(0);
     await expect(page.locator("#episodeOneEnding")).not.toContainText("Night Post");
+    await expect(page.locator('button[data-offered-job-id*="red-tag"]')).toHaveCount(0);
+    await expect(page.locator("#packetButton")).toContainText("Blue packet");
   });
 
   // #2918: each Unlit Door choice serves its own Episode 2 job at the Night Post.
