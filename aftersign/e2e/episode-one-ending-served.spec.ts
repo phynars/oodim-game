@@ -360,8 +360,9 @@ async function runToEnding(
   };
 }
 
-test("asking what changed hides the stale route fork and keeps delivery tappable", async ({ page }) => {
+test("asking what changed retires that button but keeps the red tag takeable (#2981)", async ({ page }) => {
   test.setTimeout(150_000);
+  await page.setViewportSize(PHONE_VIEWPORT);
   await page.goto(`/aftersign/?slot=ask-what-changed-${Date.now()}&player=ask-what-changed-${Date.now()}`, { waitUntil: "load" });
   await waitForVersion(page);
   await waitForBeat(page, "packet-offered");
@@ -377,12 +378,19 @@ test("asking what changed hides the stale route fork and keeps delivery tappable
   await tapChoice(page, "ask-what-changed");
 
   await expect(page.locator("#deliverButton")).toBeVisible({ timeout: WAIT_MS });
-  await expect(page.locator("#routeChoice")).toBeHidden();
+  // The answered question is spent: tapping it again would only repeat Io.
+  await expect(page.locator('button[data-choice-id="ask-what-changed"]')).toBeHidden();
+  // Asking must not cost the player the red tag.
+  const take = page.locator('button[data-choice-id="accept-second-packet"]');
+  await expect(take).toBeVisible();
+  await expect(take).toBeEnabled();
   // The vigil stays offered: lighting it after asking is the
   // ask-what-changed Episode 1 path Saint Orra later recalls.
   await expect(page.locator('button[data-choice-id="light-vigil"]')).toBeVisible();
+  await tapChoice(page, "accept-second-packet");
   await tapChoice(page, "deliver-packet");
   await waitForBeat(page, "packet-offered");
+  await expect(page.locator("#packetButton")).toHaveText("Red tag — Saint Orra");
 });
 
 async function carryRedTagToSaintOrra(page: Page): Promise<void> {
