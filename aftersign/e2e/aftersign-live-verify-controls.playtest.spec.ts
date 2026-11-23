@@ -101,6 +101,9 @@ test.describe("AFTERSIGN live-verify control and save path", () => {
     // the sibling `reset-route-risk-isolation.spec.ts:152` assertion.
     // If pointer-events isn't `auto` on `.slice-save-controls`, this
     // tap times out at 15s and the spec reds.
+    // First tap arms the confirmation (#2955); the second one resets.
+    await reset.tap();
+    await expect(reset).toHaveText("Confirm start fresh");
     await reset.tap();
     await expect(
       page.locator('[data-beat-id="packet-offered"]'),

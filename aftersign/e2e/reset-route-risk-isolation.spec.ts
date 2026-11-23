@@ -151,6 +151,10 @@ test.describe("AFTERSIGN reset route-risk isolation", () => {
     // role+name regex over `/reset/i` no longer matches — the tap
     // times out at 30s. The id is the authored handle main.js and
     // the CSS both grip, so pin to it.
+    // Start fresh asks for a second tap before it wipes the save
+    // (#2955): the first tap arms "Confirm start fresh".
+    await page.locator("#resetButton").tap();
+    await expect(page.locator("#resetButton")).toHaveText("Confirm start fresh");
     await page.locator("#resetButton").tap();
 
     await expect(

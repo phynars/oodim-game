@@ -736,16 +736,18 @@
       .slice-save-controls {
         display: flex;
         gap: 10px;
-        margin-top: 28px;
-        padding-top: 16px;
+        align-items: center;
+        margin-top: 12px;
+        padding-top: 8px;
         border-top: 1px solid rgba(255, 176, 142, 0.42);
         flex-wrap: wrap;
         pointer-events: auto;
       }
 
+      /* Inline label (no full-width row) so the separated section adds no
+         height to the HUD panel — a taller panel covers #movePad. */
       .slice-save-controls::before {
         content: "Start over";
-        flex-basis: 100%;
         color: #ffb08e;
         font-size: 0.72rem;
         letter-spacing: 0.12em;
