@@ -2627,7 +2627,7 @@ const publishState = () => {
         }
         // #2164: keep WHICH action ran, not just the route class, so the
           // recall never names a route the player did not take.
-          state.player.routeRisk = { ...recordRouteRun({ route, succeeded }), lastAction: action };
+          state.player.routeRisk = { ...recordRouteRun({ route, succeeded }), lastAction: action, deliveryId: state.delivery.id };
         markStateDirty();
         void persistAuthoritative({ dirty: true });
       },
@@ -3231,7 +3231,7 @@ const renderText = () => {
           }
           // #2164: keep WHICH action ran, not just the route class, so the
           // recall never names a route the player did not take.
-          state.player.routeRisk = { ...recordRouteRun({ route, succeeded }), lastAction: action };
+          state.player.routeRisk = { ...recordRouteRun({ route, succeeded }), lastAction: action, deliveryId: state.delivery.id };
           // Keep the selected label across the ensuing tray rebuild: the
           // route-memory action set changes immediately after this tap,
           // but the receipt must stay visible to the player. The stamp

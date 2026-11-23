@@ -112,7 +112,7 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     // already be on screen, saying the stored route, before any Accept tap.
     const nikoGreeting = page.locator('#nikoThread[data-niko-greeting="night-post"]');
     await expect(nikoGreeting).toBeVisible({ timeout: WAIT_MS });
-    await expect(nikoGreeting).toContainText("Niko Thread:");
+    await expect(nikoGreeting).toContainText("Niko Thread: You kept to Lit stair — under Io's window. I noticed.");
     await expect(page.locator("[data-niko-shortcut-choice]")).toHaveCount(0);
     await accept.tap();
     await expect(page.locator("#nikoThread")).toBeVisible({ timeout: WAIT_MS });

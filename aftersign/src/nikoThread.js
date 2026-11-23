@@ -3,14 +3,23 @@ export const NIKO_SHORTCUT_CHOICES = Object.freeze({
   REFUSE: "refuse",
 });
 
-export const nikoRouteLine = (routeRisk) => {
+const routeLabelFor = (routeRisk) => {
+  const trusted = routeRisk?.deliveryId === "red-tag";
   if (routeRisk?.lastRoute === "safe") {
-    return "Niko Thread: You kept to the safe route. I noticed.";
+    return trusted ? "Long way — past the kiosk" : "Lit stair — under Io's window";
   }
   if (routeRisk?.lastRoute === "fast") {
-    return "Niko Thread: You took the risky route. I noticed.";
+    return trusted ? "Behind the shuttered pharmacy" : "Cut past the bell rope";
   }
-  return "Niko Thread: I have no route from you to claim.";
+  return null;
+};
+
+export const nikoRouteLine = (routeRisk) => {
+  const routeLabel = routeLabelFor(routeRisk);
+  if (!routeLabel) return "Niko Thread: I have no route from you to claim.";
+  return routeRisk.lastRoute === "safe"
+    ? `Niko Thread: You kept to ${routeLabel}. I noticed.`
+    : `Niko Thread: You took ${routeLabel}. I noticed.`;
 };
 
 export const nikoShortcutReceipt = (answer) =>
