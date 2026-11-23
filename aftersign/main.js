@@ -3032,8 +3032,9 @@ const renderText = () => {
   const isReturnToneChoiceBeat = state.scene.beat === "return-tone-choice";
   const isNextJobBeat = state.scene.beat === "io-next-job";
   // Once Io has answered a second-packet question, the visible next step is
-  // delivery. Keep the response readable instead of leaving the unrelated
-  // return and vigil forks competing with the delivery control.
+  // delivery (or the vigil, which ends Episode 1 and is a real choice on
+  // this path). Hide the stale return-route fork so it no longer competes
+  // with those controls.
   const secondPacketResponseSettled =
     isNextJobBeat && ioSecondPacketPointerChoiceId === "ask-what-changed";
   // The selected second-packet response is already the beat's primary
@@ -3086,9 +3087,7 @@ const renderText = () => {
       ioLedgerLine.setAttribute("data-io-ledger-fact", ledgerStamp);
     }
   }
-  const routeChoiceVisible =
-    (isPacketChoiceBeat || isPacketDeliveredBeat || isReturnRecognitionBeat || isReturnToneChoiceBeat || isNextJobBeat)
-    && !secondPacketResponseSettled;
+  const routeChoiceVisible = isPacketChoiceBeat || isPacketDeliveredBeat || isReturnRecognitionBeat || isReturnToneChoiceBeat || isNextJobBeat;
   // #2944: at packet-delivered the two kiosk buttons are a receipt, not a
   // live fork. A button the player never tapped must not be drawn there
   // (a disabled "I ran early" reads as a choice made for them). When
@@ -3096,7 +3095,9 @@ const renderText = () => {
   // The later beats reuse the same buttons as live return/next-job
   // choices, so they stay visible there.
   const routeChoiceShown =
-    routeChoiceVisible && !(isPacketDeliveredBeat && state.player.secondAction === null);
+    routeChoiceVisible
+    && !(isPacketDeliveredBeat && state.player.secondAction === null)
+    && !secondPacketResponseSettled;
   if (routeChoice.dataset.visible !== String(routeChoiceShown)) {
     routeChoice.dataset.visible = String(routeChoiceShown);
   }
@@ -3134,7 +3135,6 @@ const renderText = () => {
     // it never covers "Deliver next packet" / "Ask what changed".
     const vigilVisible =
       isNextJobBeat
-      && !secondPacketResponseSettled
       && !state.story.endingId;
     if (vigilChoice.dataset.visible !== String(vigilVisible)) {
       vigilChoice.dataset.visible = String(vigilVisible);

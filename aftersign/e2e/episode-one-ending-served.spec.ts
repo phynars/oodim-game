@@ -360,7 +360,7 @@ async function runToEnding(
   };
 }
 
-test("asking what changed leaves delivery as the only next-story tap", async ({ page }) => {
+test("asking what changed hides the stale route fork and keeps delivery tappable", async ({ page }) => {
   test.setTimeout(150_000);
   await page.goto(`/aftersign/?slot=ask-what-changed-${Date.now()}&player=ask-what-changed-${Date.now()}`, { waitUntil: "load" });
   await waitForVersion(page);
@@ -377,8 +377,10 @@ test("asking what changed leaves delivery as the only next-story tap", async ({ 
   await tapChoice(page, "ask-what-changed");
 
   await expect(page.locator("#deliverButton")).toBeVisible({ timeout: WAIT_MS });
-  await expect(page.locator("#vigilChoice")).toBeHidden();
   await expect(page.locator("#routeChoice")).toBeHidden();
+  // The vigil stays offered: lighting it after asking is the
+  // ask-what-changed Episode 1 path Saint Orra later recalls.
+  await expect(page.locator('button[data-choice-id="light-vigil"]')).toBeVisible();
   await tapChoice(page, "deliver-packet");
   await waitForBeat(page, "packet-offered");
 });
@@ -416,6 +418,7 @@ test.describe("Saint Orra red-tag recall", () => {
 
   for (const [choiceId, expectedLine] of [
     ["accept-second-packet", "You took the red tag at once. I remember the hand that did not wait."],
+    ["ask-what-changed", "You asked what changed before you carried it. I remember the question."],
   ] as const) {
     test(`recalls the real first tap after carrying the tag: ${choiceId}`, async ({ page, browser }) => {
       test.setTimeout(150_000);
