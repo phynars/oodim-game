@@ -5881,11 +5881,6 @@ const resetSliceSave = async () => {
   }
   state.npcs.io.memory = [];
   state.npcs.io.lastLineMemoryRefs = [];
-  // A visible Start fresh begins a new player run, not a returning session.
-  // Keep this in the reset state (rather than only deleting the saved
-  // envelope) because the current in-memory flags decide Io's first line
-  // before another server round trip can occur.
-  state.player.flags.io_intro_seen = false;
   state.npcs.orra.memory = [];
   state.npcs.orra.lastLineId = ORRA_FIRST_CONTACT_LINE_ID;
   state.npcs.orra.lastLine = lineCopyForOrraLineId(ORRA_FIRST_CONTACT_LINE_ID);
