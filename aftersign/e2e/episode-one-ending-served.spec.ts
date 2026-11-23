@@ -152,6 +152,22 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
   await button.click();
 }
 
+async function expectVigilChoicesReachableOnPhone(page: Page): Promise<void> {
+  for (const id of ["meetOrraButton", "lightVigilButton", "spareVigilButton"]) {
+    const button = page.locator(`#${id}`);
+    await expect(button, `${id} must be visible in the phone viewport`).toBeVisible({ timeout: WAIT_MS });
+    await expect(button, `${id} must not be cut off below the phone viewport`).toBeInViewport();
+    const box = await button.boundingBox();
+    expect(box, `${id} must have a rendered phone bounding box`).not.toBeNull();
+    expect(box!.y + box!.height, `${id} must fit wholly above the phone bottom`).toBeLessThanOrEqual(
+      PHONE_VIEWPORT.height,
+    );
+  }
+
+  const vigil = page.locator("#vigilChoice");
+  await expect(vigil, "vigil choices must not share the stale controls strip").toHaveCSS("position", "fixed");
+}
+
 /**
  * Tap the return-tone posture button by `data-return-reason`.
  *
@@ -302,6 +318,8 @@ async function runToEnding(
     ).toBeVisible({ timeout: WAIT_MS });
   }
 
+  await expectVigilChoicesReachableOnPhone(page);
+
   // Vigil tap. Since #2577 the vigil tray is visible at `io-next-job`
   // whether or not the tag was accepted; the ending reads only
   // `player.redTagAccepted`, set by the accept tap above. No `meet-orra`
@@ -322,7 +340,7 @@ async function runToEnding(
   await expect(vigilControl, "the visible vigil control must accept the player's tap").toBeVisible({
     timeout: WAIT_MS,
   });
-  await tapChoice(page, "light-vigil");
+  await page.locator("#lightVigilButton").click();
 
   await waitForEndingPublished(page);
   return {

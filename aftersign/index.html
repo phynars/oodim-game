@@ -731,6 +731,23 @@
       #vigilChoice {
         pointer-events: auto;
       }
+
+      /* Keep the Saint Orra decision above the phone safe area rather than
+         letting the bottom-anchored HUD clip its final row. This tray is a
+         distinct story decision, so it must not share the controls strip
+         with stale packet actions while it is offered. */
+      #vigilChoice[data-visible="true"] {
+        position: fixed;
+        left: max(12px, env(safe-area-inset-left));
+        right: max(12px, env(safe-area-inset-right));
+        bottom: max(12px, env(safe-area-inset-bottom));
+        z-index: 62;
+        padding: 12px;
+        border: 1px solid rgba(173, 242, 255, 0.32);
+        border-radius: 14px;
+        background: rgba(5, 14, 25, 0.96);
+        box-shadow: 0 0 28px rgba(0, 204, 255, 0.16);
+      }
       /* PR #2653 / #2649: Maud Underbell's Bell Archive card renders its
          name-choice buttons into #episodeOneEnding, another `.hud`
          sibling of `.controls`. Without this opt-in the buttons inherit
