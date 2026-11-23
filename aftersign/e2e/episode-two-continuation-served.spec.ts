@@ -184,7 +184,9 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await tapVisible(page, "#packetButton");
     await waitForBeat(page, "packet-choice");
     await expect(page.locator('button[data-choice-id="acknowledge-kiosk"]')).toBeVisible();
-    await expect(page.locator('button[data-choice-id="deliver-packet"]')).toHaveCount(0);
+    // The deliver control is always mounted in packet-choice; it must name the
+    // fresh blue packet, never the prior run's red tag (#2968).
+    await expect(page.locator('button[data-choice-id="deliver-packet"]')).not.toContainText(/red tag/i);
     await page.reload({ waitUntil: "load" });
     await waitForBeat(page, "packet-offered");
     await expect(page.locator("#episodeOneEnding[data-continuation]")).toHaveCount(0);
