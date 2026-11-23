@@ -176,6 +176,41 @@ test.describe("Durable Act II ending (#2726)", () => {
     }
   });
 
+  test("renders only the three door choices on the opened Unlit Door card (#2992 AC-2)", async ({ page }) => {
+    test.setTimeout(240_000);
+    const { player, slot } = ids("unlit-door-only-choices");
+    await completeEnding(page, slot, player, DIM);
+    await tapVisible(page, 'button[data-choice-id="open-unlit-door"]');
+
+    const card = page.locator(`[data-ending-id="${DIM.endingId}"]`);
+    await expect(card.getByRole("heading", { name: "The Unlit Door", exact: true })).toBeVisible();
+    const buttons = card.locator("button");
+    await expect(buttons).toHaveCount(3);
+    const buttonIds = await buttons.evaluateAll((els) => els.map((el) => el.getAttribute("data-choice-id")));
+    expect(buttonIds).toEqual(["keep-official-record", "protect-private-lie", "hang-new-sign"]);
+    await expect(card.locator("[data-maud-name-choice]")).toHaveCount(0);
+    for (const text of ["Carry the name to the Bell Archive", "Red tag — Saint Orra", "Go to the Unlit Door"]) {
+      await expect(card).not.toContainText(text);
+    }
+  });
+
+  test("describes every door choice and names the private lie (#2992 AC-3)", async ({ page }) => {
+    test.setTimeout(240_000);
+    const { player, slot } = ids("unlit-door-private-lie");
+    await completeEnding(page, slot, player, DIM);
+    await tapVisible(page, 'button[data-choice-id="open-unlit-door"]');
+
+    const card = page.locator(`[data-ending-id="${DIM.endingId}"]`);
+    for (const id of ["keep-official-record", "protect-private-lie", "hang-new-sign"]) {
+      const description = card.locator(`button[data-choice-id="${id}"] + .maud-bell-archive__door-consequence`);
+      await expect(description).toBeVisible();
+      expect((await description.innerText()).trim().length).toBeGreaterThan(0);
+    }
+    const privateLie = card.locator('button[data-choice-id="protect-private-lie"] + .maud-bell-archive__door-consequence');
+    await expect(privateLie).toContainText("Place a false name in Mara Vell's record");
+    await expect(privateLie).toContainText("seal the true one away");
+  });
+
   test("restores the same Act II ending outcome and name in a fresh browser context", async ({ page, browser }) => {
     test.setTimeout(240_000);
     const { player, slot } = ids("name");

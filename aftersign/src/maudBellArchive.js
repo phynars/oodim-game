@@ -99,7 +99,7 @@ export const renderMaudBellArchiveEnding = (
   door.style.pointerEvents = "auto";
   const doorChoices = [
     { id: "keep-official-record", label: "Keep the official record", consequence: `Record ${ending.name} in the official archive; Maud carries the district's darkness.` },
-    { id: "protect-private-lie", label: "Protect the private lie", consequence: `Seal ${ending.name}'s private record; Maud loses the district light.` },
+    { id: "protect-private-lie", label: "Protect the private lie", consequence: `Place a false name in ${ending.name}'s record and seal the true one away; Maud loses the district light.` },
     { id: "hang-new-sign", label: "Hang a new sign", consequence: `Replace ${ending.name}'s record with a new sign; Maud bears its false name.` },
   ];
   const showDoorChoices = () => {
