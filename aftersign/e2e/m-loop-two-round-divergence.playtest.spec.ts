@@ -43,9 +43,11 @@ async function waitForBeat(page: Page, beat: string): Promise<void> {
 }
 
 async function tapChoice(page: Page, id: string): Promise<void> {
-  const choice = page.locator(`button[data-choice-id="${id}"]`).first();
-  await expect(choice).toBeVisible({ timeout: WAIT_MS });
-  await expect(choice).toBeEnabled({ timeout: WAIT_MS });
+  const choices = page.locator(`button[data-choice-id="${id}"]`);
+  await expect(choices.first()).toBeVisible({ timeout: WAIT_MS });
+  await expect(choices.first()).toBeEnabled({ timeout: WAIT_MS });
+  const choice = choices.filter({ visible: true });
+  await expect(choice).toHaveCount(1, { timeout: WAIT_MS });
   await choice.tap();
 }
 
@@ -254,6 +256,10 @@ test.describe("AFTERSIGN M-LOOP two-round divergence", () => {
           expect(restored.npcs.io.memory).toEqual(expect.arrayContaining([
             expect.objectContaining({ kind: "delivery-outcome", object: "sealed" }),
           ]));
+          await expect(page.locator("#vigilChoice")).toHaveAttribute(
+            "data-visible",
+            "false",
+          );
           await tapChoice(page, "deliver-packet");
           const secondOffers = await readOffers(page, "completed");
           expect(secondOffers).toEqual([
