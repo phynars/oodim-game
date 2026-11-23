@@ -5884,6 +5884,13 @@ const resetSliceSave = async () => {
   };
   state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
   state.delivery = { id: "blue-packet", outcome: "unknown" };
+  // The packet button is an imperative visible projection, so restore its
+  // blue-packet identity alongside the fresh state instead of letting the
+  // previous red-tag DOM label survive the reset.
+  if (packetButton) {
+    packetButton.dataset.packetJob = "blue-packet";
+    applyPacketButtonCopy(packetButton, "idle");
+  }
   state.npcs.io.memory = [];
   state.npcs.io.lastLineMemoryRefs = [];
   state.npcs.orra.memory = [];
