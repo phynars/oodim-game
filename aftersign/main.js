@@ -3821,12 +3821,14 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
       button.setAttribute("aria-pressed", "false");
       button.dataset.aftersignChoiceKind = "flavour";
       button.setAttribute("aria-description", "Optional response; this does not advance the job");
+      button.setAttribute("title", "Optional response; this does not advance the job");
       button.style.backgroundColor = "transparent";
       button.style.borderColor = "rgba(255, 255, 255, 0.35)";
       delete button.dataset.aftersignSelected;
     }
     deliverButton.dataset.aftersignChoiceKind = "primary";
     deliverButton.setAttribute("aria-description", "Next job step");
+    deliverButton.setAttribute("title", "Next job step");
     // PR #1236: same cleanup as above — no recognition-beat stamps
     // should leak into a beat where the buttons carry different
     // choice ids.
@@ -3846,6 +3848,7 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
     for (const button of [acknowledgeRouteButton, skipRouteButton, deliverButton]) {
       delete button.dataset.aftersignChoiceKind;
       button.removeAttribute("aria-description");
+      button.removeAttribute("title");
       button.style.backgroundColor = "";
       button.style.borderColor = "";
     }

@@ -28,6 +28,11 @@ test.describe("job-step progress hierarchy", () => {
       "aria-description",
       "Optional response; this does not advance the job",
     );
+    await expect(flavour.first()).toHaveAttribute(
+      "title",
+      "Optional response; this does not advance the job",
+    );
+    await expect(primary).toHaveAttribute("title", "Next job step");
     // The vigil is a real choice on this beat (#2261/#2577): its buttons
     // must stay tappable, and none of them may claim the primary slot.
     await expect(page.locator("#vigilChoice")).toBeVisible();
