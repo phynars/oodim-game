@@ -958,7 +958,6 @@ const offeredJobs = document.querySelector("#offeredJobs");
 const vigilChoice = document.querySelector("#vigilChoice");
 const deliverButton = document.querySelector("#deliverButton");
 const soundButton = document.querySelector("#soundButton");
-const musicButton = document.querySelector("#musicButton");
 const resetButton = document.querySelector("#resetButton");
 const movePad = document.querySelector("#movePad");
 const movePadKnob = document.querySelector("#movePadKnob");
@@ -1614,9 +1613,10 @@ const setTextContentIfChanged = (node, value) => {
 
 let audioController;
 const syncMusicButton = ({ started, muted }) => {
-  if (!musicButton) return;
-  musicButton.hidden = !started;
-  musicButton.textContent = muted ? "Unmute music" : "Mute music";
+  if (!soundButton) return;
+  soundButton.textContent = started
+    ? (muted ? "Unmute music" : "Mute music")
+    : "Enable music";
 };
 const getAudioController = () => {
   audioController ??= createAftersignAudioController({
@@ -6215,12 +6215,14 @@ window.addEventListener("keyup", (event) => {
   syncKeyboardInput();
 });
 soundButton.addEventListener("click", () => {
-  void enableAudio();
+  const controller = getAudioController();
+  if (state._runtime.audio.musicStarted) {
+    void controller.toggleMusic();
+  } else {
+    void controller.enableAudio();
+  }
 });
-// Label/aria/hidden are synced by onMusicStateChange (syncMusicButton).
-musicButton.addEventListener("click", () => {
-  void getAudioController().toggleMusic();
-});
+// #soundButton is the single music control; syncMusicButton owns its label.
 let resetConfirmationPending = false;
 let resetConfirmationTimeout = null;
 const clearResetConfirmation = () => {

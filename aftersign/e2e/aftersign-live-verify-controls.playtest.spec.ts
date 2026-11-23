@@ -69,9 +69,10 @@ test.describe("AFTERSIGN live-verify control and save path", () => {
     // tap the label flips to its past-tense receipt — the player sees
     // "You listened" over the warm selected tile. The TEXT is the
     // receipt; the inline bg/border + aria-pressed are the state. The
-    // sound tile below is different (#2959): it keeps one stable action
-    // label "Toggle kiosk sound", sits outside the story choice group,
-    // and deliberately exposes no pressed state.
+    // sound tile below is different: once the offered job unlocks music,
+    // it exposes the current action ("Mute music" / "Unmute music"),
+    // sits outside the story choice group, and deliberately exposes no
+    // pressed state.
     const acknowledge = page.locator("#acknowledgeRouteButton");
     await expect(acknowledge).toBeVisible({ timeout: WAIT_MS });
     await expect(acknowledge).toHaveText("I listened");
@@ -84,7 +85,7 @@ test.describe("AFTERSIGN live-verify control and save path", () => {
     await sound.tap();
     await expect(sound).toHaveAttribute("data-kiosk-sound-selected", "true");
     await expect(sound).not.toHaveAttribute("aria-pressed", "true");
-    await expect(sound).toHaveText("Toggle kiosk sound");
+    await expect(sound).toHaveText("Unmute music");
     await expect(page.locator(".controls #soundButton")).toHaveCount(0);
 
     // The reset control is isolated into its own `.slice-save-controls`

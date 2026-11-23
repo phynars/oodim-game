@@ -40,7 +40,9 @@ test.describe("AFTERSIGN served audio", () => {
     await test.step("boot to a visible job offer", async () => {
       await page.goto(`/aftersign/index.html?slot=audio-runtime-${Date.now()}`, { waitUntil: "load" });
       await expect(page.locator("button[data-offered-job-id]").first()).toBeVisible({ timeout: BOOT_WAIT_MS });
-      // Music control stays hidden until a gesture unlocks audio.
+      // The fixed sound control offers to enable music; the legacy music
+      // button stays hidden.
+      await expect(page.locator("#soundButton")).toHaveText("Enable music");
       await expect(page.locator("#musicButton")).toBeHidden();
     });
 
@@ -49,17 +51,18 @@ test.describe("AFTERSIGN served audio", () => {
       await tapVisible(page.locator("button[data-offered-job-id]").first());
       await expect.poll(async () => (await audio(page)).ambientStarted, { timeout: STEP_WAIT_MS }).toBe(true);
       await expect.poll(async () => (await audio(page)).musicStarted, { timeout: STEP_WAIT_MS }).toBe(true);
-      await expect(page.locator("#musicButton")).not.toHaveAttribute("aria-pressed", "true");
+      await expect(page.locator("#soundButton")).toHaveText("Mute music", { timeout: STEP_WAIT_MS });
+      await expect(page.locator("#musicButton")).toBeHidden();
     });
 
     await test.step("tap Mute music", async () => {
-      await tapVisible(page.locator("#musicButton").and(page.getByRole("button", { name: "Mute music" })));
+      await tapVisible(page.locator("#soundButton").and(page.getByRole("button", { name: "Mute music" })));
       await expect.poll(async () => (await audio(page)).musicMuted, { timeout: STEP_WAIT_MS }).toBe(true);
       await expect.poll(async () => (await audio(page)).lastCue, { timeout: STEP_WAIT_MS }).toBe("music-muted");
     });
 
     await test.step("tap Unmute music", async () => {
-      await tapVisible(page.locator("#musicButton").and(page.getByRole("button", { name: "Unmute music" })));
+      await tapVisible(page.locator("#soundButton").and(page.getByRole("button", { name: "Unmute music" })));
       await expect.poll(async () => (await audio(page)).musicMuted, { timeout: STEP_WAIT_MS }).toBe(false);
       await expect.poll(async () => (await audio(page)).lastCue, { timeout: STEP_WAIT_MS }).toBe("music-unmuted");
     });
