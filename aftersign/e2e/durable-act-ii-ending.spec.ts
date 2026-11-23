@@ -137,7 +137,7 @@ test.describe("Durable Act II ending (#2726)", () => {
     await tapVisible(page, 'button[data-choice-id="open-unlit-door"]');
 
     const card = page.locator(`[data-ending-id="${DIM.endingId}"]`);
-    await expect(card.getByRole("heading", { name: "Unlit Door" })).toBeVisible();
+    await expect(card.getByRole("heading", { name: "The Unlit Door", exact: true })).toBeVisible();
     await expect(card).not.toContainText("Act II — Bell Archive");
     // The door tap makes the terminal renderer hide every earlier story
     // control. #deliverButton must exist so the loop cannot pass vacuously.
@@ -168,7 +168,10 @@ test.describe("Durable Act II ending (#2726)", () => {
       await expect(choice).toBeVisible();
       const box = await choice.boundingBox();
       expect(box).not.toBeNull();
-      if (box) expect(box.y + box.height).toBeLessThanOrEqual(PHONE_VIEWPORT.height);
+      if (box) {
+        expect(box.y + box.height).toBeLessThanOrEqual(PHONE_VIEWPORT.height);
+        expect(box.height).toBeGreaterThanOrEqual(44);
+      }
       await expect(choice.locator("xpath=following-sibling::*[1]")).toBeVisible();
     }
   });
