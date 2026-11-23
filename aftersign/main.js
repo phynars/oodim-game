@@ -3122,15 +3122,12 @@ const renderText = () => {
   // because a stale cached index.html (pre-#2261) may not have the
   // element yet — same posture as `ioLedgerLine` above.
   if (vigilChoice) {
-    // The normal packet loop also reuses io-next-job for its visible
-    // "Deliver next packet" control. Keep Saint Orra's fixed-position
-    // ending tray out of that path until a player has visibly accepted the
-    // red tag; otherwise it covers and intercepts the packet control on a
-    // phone before the player can tap it.
+    // #2976: the tray is offered at io-next-job alongside the packet
+    // loop's controls; index.html keeps it in flow after `.controls` so
+    // it never covers "Deliver next packet" / "Ask what changed".
     const vigilVisible =
       isNextJobBeat
-      && !state.story.endingId
-      && state.player.redTagAccepted === true;
+      && !state.story.endingId;
     if (vigilChoice.dataset.visible !== String(vigilVisible)) {
       vigilChoice.dataset.visible = String(vigilVisible);
     }

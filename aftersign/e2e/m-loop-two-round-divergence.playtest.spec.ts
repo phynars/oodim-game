@@ -256,10 +256,21 @@ test.describe("AFTERSIGN M-LOOP two-round divergence", () => {
           expect(restored.npcs.io.memory).toEqual(expect.arrayContaining([
             expect.objectContaining({ kind: "delivery-outcome", object: "sealed" }),
           ]));
-          await expect(page.locator("#vigilChoice")).toHaveAttribute(
-            "data-visible",
-            "false",
-          );
+          // #2976: Saint Orra's fixed vigil tray is offered at this beat
+          // too (#2577); it must sit BELOW the packet-loop control, not
+          // over it, so the real tap below reaches "Deliver next packet".
+          const vigilTray = page.locator("#vigilChoice");
+          await expect(vigilTray).toHaveAttribute("data-visible", "true");
+          const deliverNext = page
+            .locator('button[data-choice-id="deliver-packet"]')
+            .filter({ visible: true });
+          await expect(deliverNext).toHaveCount(1, { timeout: WAIT_MS });
+          await expect.poll(async () => {
+            const tray = await vigilTray.boundingBox();
+            const button = await deliverNext.boundingBox();
+            if (!tray || !button) return false;
+            return button.y + button.height <= tray.y;
+          }, { timeout: WAIT_MS, message: "deliver-packet must sit above the vigil tray" }).toBe(true);
           await tapChoice(page, "deliver-packet");
           const secondOffers = await readOffers(page, "completed");
           expect(secondOffers).toEqual([

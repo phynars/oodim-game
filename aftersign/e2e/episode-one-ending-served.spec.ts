@@ -156,6 +156,9 @@ async function expectVigilChoicesReachableOnPhone(page: Page): Promise<void> {
   for (const id of ["meetOrraButton", "lightVigilButton", "spareVigilButton"]) {
     const button = page.locator(`#${id}`);
     await expect(button, `${id} must be visible in the phone viewport`).toBeVisible({ timeout: WAIT_MS });
+    // #2976: the tray is in flow inside the scrollable panel (#2800);
+    // a player reaches it by scrolling the panel, as this does.
+    await button.scrollIntoViewIfNeeded();
     await expect(button, `${id} must not be cut off below the phone viewport`).toBeInViewport();
     const box = await button.boundingBox();
     expect(box, `${id} must have a rendered phone bounding box`).not.toBeNull();
@@ -164,8 +167,16 @@ async function expectVigilChoicesReachableOnPhone(page: Page): Promise<void> {
     );
   }
 
-  const vigil = page.locator("#vigilChoice");
-  await expect(vigil, "vigil choices must not share the stale controls strip").toHaveCSS("position", "fixed");
+  // #2976: the tray must sit below the controls strip, never over it, so
+  // it cannot intercept the packet-loop taps that share io-next-job.
+  const vigilBox = await page.locator("#vigilChoice").boundingBox();
+  const controlsBox = await page.locator(".controls").boundingBox();
+  expect(vigilBox, "vigil tray must render").not.toBeNull();
+  expect(controlsBox, "controls strip must render").not.toBeNull();
+  expect(
+    vigilBox!.y,
+    "vigil choices must not overlap the controls strip",
+  ).toBeGreaterThanOrEqual(controlsBox!.y + controlsBox!.height);
 }
 
 /**
@@ -559,6 +570,9 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     await waitForVersion(page);
 
     await runToEnding(page, "sealed");
+    // #2962: Start fresh is a two-tap confirm; the first tap only arms it.
+    await page.locator("#resetButton").click();
+    await expect(page.locator("#resetButton")).toHaveText("Confirm start fresh");
     await page.locator("#resetButton").click();
 
     await expect(page.locator("#packetButton")).toContainText("Blue packet");
