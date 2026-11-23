@@ -1291,6 +1291,12 @@ const state = {
     // for free — no new persistence branch. `computeOfferedActions`
     // reads it on the next run to diverge the offered-action set.
     routeRisk: stored?.player?.routeRisk ?? null,
+    // #2988: which delivery the stored route was run on, so Niko names
+    // the authored route label (first-run vs red-tag row).
+    routeRiskDeliveryId:
+      typeof stored?.player?.routeRiskDeliveryId === "string"
+        ? stored.player.routeRiskDeliveryId
+        : null,
     // #2811 review: the job the player tapped at packet-offered keys
     // Io's second-delivery return line (redTagReturnAcknowledgement).
     // It rides the persist payload's clone(state.player); hydrate it
@@ -1765,7 +1771,7 @@ const lineForBeat = () => {
                 ? "risky"
                 : "none",
           );
-          greetingLine.textContent = nikoRouteLine(state.player.routeRisk);
+          greetingLine.textContent = nikoRouteLine(state.player.routeRisk, state.player.routeRiskDeliveryId);
           nikoGreeting.append(greetingLine);
           host.append(nikoGreeting);
         }
@@ -1783,7 +1789,7 @@ const lineForBeat = () => {
                 ? "risky"
                 : "none",
           );
-          routeLine.textContent = nikoRouteLine(state.player.routeRisk);
+          routeLine.textContent = nikoRouteLine(state.player.routeRisk, state.player.routeRiskDeliveryId);
           nikoCard.append(routeLine);
 
           const answer = state.story.nikoShortcutAnswer;
@@ -2628,6 +2634,8 @@ const publishState = () => {
         // #2164: keep WHICH action ran, not just the route class, so the
           // recall never names a route the player did not take.
           state.player.routeRisk = { ...recordRouteRun({ route, succeeded }), lastAction: action };
+          // #2988: the delivery the route was run on picks Niko's label row.
+          state.player.routeRiskDeliveryId = state.delivery.id;
         markStateDirty();
         void persistAuthoritative({ dirty: true });
       },
@@ -3232,6 +3240,8 @@ const renderText = () => {
           // #2164: keep WHICH action ran, not just the route class, so the
           // recall never names a route the player did not take.
           state.player.routeRisk = { ...recordRouteRun({ route, succeeded }), lastAction: action };
+          // #2988: the delivery the route was run on picks Niko's label row.
+          state.player.routeRiskDeliveryId = state.delivery.id;
           // Keep the selected label across the ensuing tray rebuild: the
           // route-memory action set changes immediately after this tap,
           // but the receipt must stay visible to the player. The stamp
@@ -5917,6 +5927,7 @@ const resetSliceSave = async () => {
     // must clear it with the rest of the player-input axes; otherwise
     // a fresh run can inherit the prior route posture.
     routeRisk: null,
+    routeRiskDeliveryId: null,
   };
   state.packet = { delivered: false, route: null, sealed: true, deliveredAt: null };
   state.delivery = { id: "blue-packet", outcome: "unknown" };
