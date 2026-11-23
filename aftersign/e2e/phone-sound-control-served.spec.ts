@@ -47,15 +47,20 @@ test.describe("AFTERSIGN phone sound control", () => {
     await waitForBeat(page, "packet-offered");
 
     // (1) The fresh-boot sound control is outside the story choice group.
-    // Tap the visible control and keep its action label stable; the audio
-    // pipeline itself cannot be witnessed because WebAudio is user-gesture
-    // gated.
+    // Its visible label changes as the player enables, mutes, and unmutes
+    // music; the separate legacy music control remains hidden.
     const sound = page.locator("#soundButton");
     await expect(sound).toBeVisible({ timeout: WAIT_MS });
     await expect(page.locator(".controls #soundButton")).toHaveCount(0);
+    await expect(sound).toHaveText("Enable music");
+    await expect(page.locator("#musicButton")).toBeHidden();
     await sound.tap();
-    await expect(sound).not.toHaveAttribute("aria-pressed", "true");
-    await expect(sound).toHaveText("Toggle kiosk sound");
+    await expect(sound).toHaveText("Mute music");
+    await expect(page.locator("#musicButton")).toBeHidden();
+    await sound.tap();
+    await expect(sound).toHaveText("Unmute music");
+    await sound.tap();
+    await expect(sound).toHaveText("Mute music");
 
     // (2) The sound tap must not swallow the offered-job selection.
     // Tap a real offered job (the fresh-memory tray stamps
@@ -78,8 +83,9 @@ test.describe("AFTERSIGN phone sound control", () => {
     await packet.tap();
     await waitForBeat(page, "packet-choice");
 
-    // The stable action label must survive the beat transition.
-    await expect(sound).not.toHaveAttribute("aria-pressed", "true");
-    await expect(sound).toHaveText("Toggle kiosk sound");
+    // The fixed sound control remains the only visible music control after
+    // the story advances.
+    await expect(sound).toHaveText("Mute music");
+    await expect(page.locator("#musicButton")).toBeHidden();
   });
 });

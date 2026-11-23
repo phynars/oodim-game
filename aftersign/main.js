@@ -1614,9 +1614,11 @@ const setTextContentIfChanged = (node, value) => {
 
 let audioController;
 const syncMusicButton = ({ started, muted }) => {
-  if (!musicButton) return;
-  musicButton.hidden = !started;
-  musicButton.textContent = muted ? "Unmute music" : "Mute music";
+  if (musicButton) musicButton.hidden = true;
+  if (!soundButton) return;
+  soundButton.textContent = started
+    ? (muted ? "Unmute music" : "Mute music")
+    : "Enable music";
 };
 const getAudioController = () => {
   audioController ??= createAftersignAudioController({
@@ -6215,9 +6217,15 @@ window.addEventListener("keyup", (event) => {
   syncKeyboardInput();
 });
 soundButton.addEventListener("click", () => {
-  void enableAudio();
+  const controller = getAudioController();
+  if (state._runtime.audio.musicStarted) {
+    void controller.toggleMusic();
+  } else {
+    void controller.enableAudio();
+  }
 });
-// Label/aria/hidden are synced by onMusicStateChange (syncMusicButton).
+// The fixed sound control owns the label; retain the hidden legacy button
+// only for compatibility with existing markup.
 musicButton.addEventListener("click", () => {
   void getAudioController().toggleMusic();
 });
