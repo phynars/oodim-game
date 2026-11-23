@@ -7,6 +7,52 @@ milestone closeout or human playtest; link evidence, don't paste it.
 
 ---
 
+## Blind AI-stranger playtest #9 (M6 closeout, run `52b80054`) — NOT PASSED
+
+**AI stranger — not a human.** A fresh agent got only the URL
+(https://game.oodim.com/aftersign/) and played a 390×844 touch page by tapping
+visible text. 25 recorded commands. The verdict is the operator's reading of
+the report against the recorded taps.
+
+**Path (recorded):** Take the safe job → Deliver packet → ("Return to Io" not
+found) → Kind return → Ask for next job → Ask what changed → Take the second
+packet → Deliver next packet → Night transfer → Deliver packet → ("Return to Io"
+not found) → Carry the name to the Bell Archive → the courier → Go to the Unlit
+Door → Keep the official record → Wake kiosk sound → Begin Episode 2 → Mute
+music.
+
+**"What job were you offered when you came back, and what did Niko know about
+you?"** The player wrote "Niko never appeared in anything I saw", and answered
+with Episode 1's Night transfer and Signed receipt board. They did name the
+Episode 2 offer they saw after "Begin Episode 2" ("The Ledger Run", matching
+command 24 and the door choice from command 21), but did not tap "Accept The
+Ledger Run".
+
+**Why it did not pass:**
+- The question was not answered: as in run #8, the last Episode 2 tap is
+  "Begin Episode 2" (command 24 of 25), so the player never reached Niko.
+- Same stop point as #8 (24 commands) after #2935 and #2934 closed: the
+  failure is not below-the-fold or a falsely selected control any more. Episode 1
+  alone takes the stranger about 22 commands, so Episode 2 and Niko come at the
+  very end of the run.
+
+**Lines the player could not match to a tap:** Io credits "blue seal,
+unbroken" / "You kept the seal" though the player never touched the packet
+(they only tapped Deliver packet). "Take the second packet" answered "Good.
+Take the red tag."
+
+**Other friction (not blocking):** "Return to Io" moved before the tap landed
+(twice); the archive names, the Unlit Door and the ending were below the fold;
+tapping "Keep the official record" showed no change until a swipe; recap lines
+stack on every screen.
+
+**Next:** the path from boot to Niko has to fit in a stranger's run. Either
+shorten Episode 1 for a returning or finished save, or put Niko's meeting on
+the first Episode 2 screen, before re-running the closeout (starts are capped
+at 2 per 24h).
+
+---
+
 ## 2026-11-22 — Human playtest (desktop) — eight bugs filed, two block M6
 
 **A human, not an AI stranger, and not a closeout run.** One person outside the
