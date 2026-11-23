@@ -48,6 +48,14 @@ test.describe("AFTERSIGN second-packet continuity", () => {
     await tapChoice("ask-for-next-job");
     await waitForBeat("io-next-job");
 
+    // The fixed-bottom HUD can make this combined job/vigil decision taller
+    // than a phone viewport. Players must receive a visible, in-panel cue
+    // before they need to scroll for a lower choice.
+    const vigilTray = page.locator("#vigilChoice[data-visible=\"true\"]");
+    await expect(vigilTray.locator(".scroll-cue")).toBeVisible({ timeout: WAIT_MS });
+    await expect(vigilTray.locator(".scroll-cue")).toContainText(/swipe.*panel/i);
+    await expect(page.locator(".panel")).toHaveCSS("overflow-y", "auto");
+
     await tapChoice("accept-second-packet");
     await tapChoice("deliver-packet");
     await waitForBeat("packet-offered");
