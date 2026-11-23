@@ -19,6 +19,7 @@ import { createFeedbackController } from "./src/presentation/feedbackController.
 import { renderReturnRecognition } from "./src/presentation/returnRecognitionRenderer.js";
 import { createTerminalEndingRenderer } from "./src/presentation/terminalEndingRenderer.js";
 import { createPacketPressFeedbackRenderer } from "./src/packetPressFeedbackRenderer.js";
+import "./soundButtonSelected.js";
 import { createJobOfferController } from "./src/interactions/jobOfferController.js";
 import { createPacketOfferController } from "./src/interactions/packetOfferController.js";
 import { createRouteChoiceController } from "./src/interactions/routeChoiceController.js";

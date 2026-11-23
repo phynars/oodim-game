@@ -6,6 +6,7 @@ test("Wake kiosk sound tap retains its selected treatment through a render frame
   const soundButton = page.locator("#soundButton");
   await expect(soundButton).toBeVisible();
   await expect(soundButton).toHaveText("Enable music");
+  await expect(soundButton).not.toHaveAttribute("data-kiosk-sound-selected");
   await soundButton.click();
   // The label names the next music action; the warm tile is the receipt.
   await expect(soundButton).toHaveText("Mute music");
