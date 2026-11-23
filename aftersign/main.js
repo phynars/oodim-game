@@ -3031,6 +3031,11 @@ const renderText = () => {
   }
   const isReturnToneChoiceBeat = state.scene.beat === "return-tone-choice";
   const isNextJobBeat = state.scene.beat === "io-next-job";
+  // Once Io has answered a second-packet question, the visible next step is
+  // delivery. Keep the response readable instead of leaving the unrelated
+  // return and vigil forks competing with the delivery control.
+  const secondPacketResponseSettled =
+    isNextJobBeat && ioSecondPacketPointerChoiceId === "ask-what-changed";
   // The selected second-packet response is already the beat's primary
   // `#line` copy through `ioSecondPacketResponseLine`. Do not stamp the
   // identical sentence into a sibling paragraph: on a phone this read as
@@ -3081,7 +3086,9 @@ const renderText = () => {
       ioLedgerLine.setAttribute("data-io-ledger-fact", ledgerStamp);
     }
   }
-  const routeChoiceVisible = isPacketChoiceBeat || isPacketDeliveredBeat || isReturnRecognitionBeat || isReturnToneChoiceBeat || isNextJobBeat;
+  const routeChoiceVisible =
+    (isPacketChoiceBeat || isPacketDeliveredBeat || isReturnRecognitionBeat || isReturnToneChoiceBeat || isNextJobBeat)
+    && !secondPacketResponseSettled;
   // #2944: at packet-delivered the two kiosk buttons are a receipt, not a
   // live fork. A button the player never tapped must not be drawn there
   // (a disabled "I ran early" reads as a choice made for them). When
@@ -3127,6 +3134,7 @@ const renderText = () => {
     // it never covers "Deliver next packet" / "Ask what changed".
     const vigilVisible =
       isNextJobBeat
+      && !secondPacketResponseSettled
       && !state.story.endingId;
     if (vigilChoice.dataset.visible !== String(vigilVisible)) {
       vigilChoice.dataset.visible = String(vigilVisible);

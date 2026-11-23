@@ -360,6 +360,29 @@ async function runToEnding(
   };
 }
 
+test("asking what changed leaves delivery as the only next-story tap", async ({ page }) => {
+  test.setTimeout(150_000);
+  await page.goto(`/aftersign/?slot=ask-what-changed-${Date.now()}&player=ask-what-changed-${Date.now()}`, { waitUntil: "load" });
+  await waitForVersion(page);
+  await waitForBeat(page, "packet-offered");
+  await performPacketGesture(page, "sealed");
+  await waitForBeat(page, "packet-choice");
+  await tapChoice(page, "acknowledge-kiosk");
+  await tapChoice(page, "deliver-packet");
+  await waitForBeat(page, "io-return-recognition");
+  await tapReturnTone(page, "kind");
+  await waitForBeat(page, "return-tone-choice");
+  await tapChoice(page, "ask-for-next-job");
+  await waitForBeat(page, "io-next-job");
+  await tapChoice(page, "ask-what-changed");
+
+  await expect(page.locator("#deliverButton")).toBeVisible({ timeout: WAIT_MS });
+  await expect(page.locator("#vigilChoice")).toBeHidden();
+  await expect(page.locator("#routeChoice")).toBeHidden();
+  await tapChoice(page, "deliver-packet");
+  await waitForBeat(page, "packet-offered");
+});
+
 async function carryRedTagToSaintOrra(page: Page): Promise<void> {
   const carry = page.locator(
     'button[data-choice-id="carry-red-tag-to-saint-orra"]:not([disabled])',
@@ -393,7 +416,6 @@ test.describe("Saint Orra red-tag recall", () => {
 
   for (const [choiceId, expectedLine] of [
     ["accept-second-packet", "You took the red tag at once. I remember the hand that did not wait."],
-    ["ask-what-changed", "You asked what changed before you carried it. I remember the question."],
   ] as const) {
     test(`recalls the real first tap after carrying the tag: ${choiceId}`, async ({ page, browser }) => {
       test.setTimeout(150_000);
