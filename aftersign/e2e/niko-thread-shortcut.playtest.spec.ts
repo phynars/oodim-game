@@ -7,9 +7,10 @@ test.describe("Niko Thread shortcut continuation (#2953)", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
   for (const [route, routeText, answer, answerText, door, jobName] of [
-    ["safe", "safe route", "take", "Take the shortcut", "keep-official-record", "The Ledger Run"],
-    ["risky", "risky route", "refuse", "Refuse the shortcut", "protect-private-lie", "The Quiet Envelope"],
-    ["safe", "safe route", "take", "Take the shortcut", "hang-new-sign", "The New Sign"],
+    // #2988: Niko names the authored first-run route label, not a class.
+    ["safe", "You kept to Lit stair — under Io's window.", "take", "Take the shortcut", "keep-official-record", "The Ledger Run"],
+    ["risky", "You took Cut past the bell rope.", "refuse", "Refuse the shortcut", "protect-private-lie", "The Quiet Envelope"],
+    ["safe", "You kept to Lit stair — under Io's window.", "take", "Take the shortcut", "hang-new-sign", "The New Sign"],
   ] as const) {
     test(`names the ${route} route and ends ${jobName} after Niko ${answer}s`, async ({ page, browser }) => {
       test.setTimeout(240_000);

@@ -3,8 +3,10 @@ export const NIKO_SHORTCUT_CHOICES = Object.freeze({
   REFUSE: "refuse",
 });
 
-const routeLabelFor = (routeRisk) => {
-  const trusted = routeRisk?.deliveryId === "red-tag";
+// #2988: the delivery the route was run on picks the authored label row
+// (red-tag → trusted row, anything else → first-run row).
+const routeLabelFor = (routeRisk, deliveryId) => {
+  const trusted = deliveryId === "red-tag";
   if (routeRisk?.lastRoute === "safe") {
     return trusted ? "Long way — past the kiosk" : "Lit stair — under Io's window";
   }
@@ -14,8 +16,8 @@ const routeLabelFor = (routeRisk) => {
   return null;
 };
 
-export const nikoRouteLine = (routeRisk) => {
-  const routeLabel = routeLabelFor(routeRisk);
+export const nikoRouteLine = (routeRisk, deliveryId = null) => {
+  const routeLabel = routeLabelFor(routeRisk, deliveryId);
   if (!routeLabel) return "Niko Thread: I have no route from you to claim.";
   return routeRisk.lastRoute === "safe"
     ? `Niko Thread: You kept to ${routeLabel}. I noticed.`
