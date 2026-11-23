@@ -34,7 +34,7 @@ test.describe("job-step progress hierarchy", () => {
     await expect(page.locator("#vigilChoice button:enabled")).toHaveCount(3);
     await expect(page.locator('#vigilChoice [data-aftersign-choice-kind="primary"]')).toHaveCount(0);
 
-    await tapAdvance(page, '[data-aftersign-choice-kind="primary"]');
+    await primary.tap();
     await expect(page.locator('[data-beat-id="packet-offered"]')).toBeVisible();
   });
 });
