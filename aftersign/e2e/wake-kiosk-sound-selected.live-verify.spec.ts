@@ -1,7 +1,14 @@
 import { expect, test } from "@playwright/test";
 
 test("Wake kiosk sound tap retains its selected treatment through a render frame", async ({ page }) => {
-  await page.goto("/aftersign/");
+  // #2986: on game.oodim.com /player-memory answers slowly, so the visible
+  // sound control is tapped while boot still awaits it. Hold that response
+  // to replay the deployed timing: the tap must still reach the music control.
+  await page.route("**/player-memory", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    await route.continue();
+  });
+  await page.goto("/aftersign/", { waitUntil: "commit" });
 
   const soundButton = page.locator("#soundButton");
   await expect(soundButton).toBeVisible();
