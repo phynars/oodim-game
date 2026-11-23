@@ -3031,6 +3031,12 @@ const renderText = () => {
   }
   const isReturnToneChoiceBeat = state.scene.beat === "return-tone-choice";
   const isNextJobBeat = state.scene.beat === "io-next-job";
+  // #2981: once Io has answered "Ask what changed", that button is spent —
+  // tapping it again only re-shows the same line. Hide just that button
+  // (the io-next-job beat stamps it onto `skipRouteButton`). "Take the
+  // second packet" stays: asking must not cost the player the red tag.
+  const secondPacketResponseSettled =
+    isNextJobBeat && ioSecondPacketPointerChoiceId === "ask-what-changed";
   // The selected second-packet response is already the beat's primary
   // `#line` copy through `ioSecondPacketResponseLine`. Do not stamp the
   // identical sentence into a sibling paragraph: on a phone this read as
@@ -3098,7 +3104,8 @@ const renderText = () => {
   const hideAcknowledgeReceipt =
     isPacketDeliveredBeat && state.player.secondAction !== SECOND_ACTION.DONE;
   const hideSkipReceipt =
-    isPacketDeliveredBeat && state.player.secondAction !== SECOND_ACTION.SKIPPED;
+    (isPacketDeliveredBeat && state.player.secondAction !== SECOND_ACTION.SKIPPED)
+    || secondPacketResponseSettled;
   const acknowledgeDisplay = hideAcknowledgeReceipt ? "none" : "";
   const skipDisplay = hideSkipReceipt ? "none" : "";
   if (acknowledgeRouteButton.style.display !== acknowledgeDisplay) {
