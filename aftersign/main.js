@@ -958,7 +958,6 @@ const offeredJobs = document.querySelector("#offeredJobs");
 const vigilChoice = document.querySelector("#vigilChoice");
 const deliverButton = document.querySelector("#deliverButton");
 const soundButton = document.querySelector("#soundButton");
-const musicButton = document.querySelector("#musicButton");
 const resetButton = document.querySelector("#resetButton");
 const movePad = document.querySelector("#movePad");
 const movePadKnob = document.querySelector("#movePadKnob");
@@ -1614,7 +1613,6 @@ const setTextContentIfChanged = (node, value) => {
 
 let audioController;
 const syncMusicButton = ({ started, muted }) => {
-  if (musicButton) musicButton.hidden = true;
   if (!soundButton) return;
   soundButton.textContent = started
     ? (muted ? "Unmute music" : "Mute music")
@@ -6224,11 +6222,7 @@ soundButton.addEventListener("click", () => {
     void controller.enableAudio();
   }
 });
-// The fixed sound control owns the label; retain the hidden legacy button
-// only for compatibility with existing markup.
-musicButton.addEventListener("click", () => {
-  void getAudioController().toggleMusic();
-});
+// #soundButton is the single music control; syncMusicButton owns its label.
 let resetConfirmationPending = false;
 let resetConfirmationTimeout = null;
 const clearResetConfirmation = () => {

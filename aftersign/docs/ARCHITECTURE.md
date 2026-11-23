@@ -111,7 +111,8 @@ specs for this contract change; it is not a repository-wide inventory.
 The existing `aftersign/main.js` runtime owns served WebAudio. Its visible
 interactions use the gesture-gated `enableAudio()` path before the synthesized
 rainline ambient bed and `music-layer.js`'s repeating synthesized triangle-note
-music can start. The phone-visible `#musicButton` mutes only the music gain;
+music can start. Once music has started, the phone-visible `#soundButton`
+("Mute music" / "Unmute music") mutes only the music gain;
 interaction cues retain their audio path. `_runtime.audio` is the read-only
 verification boundary: browser tests must tap rendered controls, then may
 inspect unlock, ambient, music, and cue state. No external audio assets are
@@ -123,4 +124,4 @@ against main after every merge.
 
 ## Synthesized music layer
 
-`aftersign/audio.js` starts a low-volume WebAudio triangle-note loop alongside the rainline ambient bed after the player taps the visible **Wake kiosk sound** control. `#musicButton` remains hidden until that gesture unlocks audio, then lets the player mute or unmute only the music gain; interaction cues retain their existing audio path. The existing published `window.__game._runtime.audio` state includes `ambientStarted`, `musicStarted`, `musicMuted`, and `musicState` (`idle` → `playing` ⇄ `muted`, written by `aftersign/audio.js`) for e2e outcome assertions. `aftersign/e2e/aftersign-audio-runtime.playtest.spec.ts` uses phone viewport taps on those visible controls and does not use harness input to cause actions.
+`aftersign/audio.js` starts a low-volume WebAudio triangle-note loop alongside the rainline ambient bed after the player taps the visible `#soundButton` control (labelled **Enable music** at boot). That same control then reads **Mute music** / **Unmute music** and lets the player mute or unmute only the music gain; interaction cues retain their existing audio path. The existing published `window.__game._runtime.audio` state includes `ambientStarted`, `musicStarted`, `musicMuted`, and `musicState` (`idle` → `playing` ⇄ `muted`, written by `aftersign/audio.js`) for e2e outcome assertions. `aftersign/e2e/aftersign-audio-runtime.playtest.spec.ts` uses phone viewport taps on those visible controls and does not use harness input to cause actions.
