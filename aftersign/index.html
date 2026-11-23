@@ -683,6 +683,23 @@
         pointer-events: auto;
       }
 
+      /* Sound is a utility control, not a story choice. It is pinned to
+         the top-right corner OUTSIDE `.hud` so it adds nothing to the
+         panel height the move pad clears (#2965 review F3). */
+      .sound-control-corner {
+        position: fixed;
+        top: max(12px, env(safe-area-inset-top));
+        right: max(12px, env(safe-area-inset-right));
+        z-index: 62;
+        display: flex;
+        pointer-events: auto;
+      }
+
+      .sound-control-corner[data-start-gated="true"] {
+        visibility: hidden;
+        pointer-events: none;
+      }
+
       /* M3-E1 (#2261 / PR #2265) — the Episode 1 ending host is
          empty until the player's vigil tap commits an ending. While
          empty it must contribute ZERO to layout so a sibling tray
@@ -1249,9 +1266,6 @@
          removed earlier in #1815 for the same reason (id
          near-collision made `document.getElementById()` a
          readability trap). -->
-    <div id="movePad" class="move-pad" data-active="false" data-start-gated="true" aria-label="Move Io's courier" role="application">
-      <div id="movePadKnob" class="move-pad-knob" aria-hidden="true"></div>
-    </div>
     <div id="recognitionImpactBurst" class="impact-burst" aria-hidden="true"></div>
     <!--
       Return-tone feel surface. Stamped by main.js ::
@@ -1297,6 +1311,12 @@
       </div>
     </div>
     <p class="state-readout" id="stateReadout">story: packet-offered · memory: pending</p>
+    <!-- #2959: sound is a utility corner control, a sibling of `.hud`
+         (not inside it) so it never grows the panel the move pad's
+         clearance tracks (--aftersign-hud-height). -->
+    <div class="sound-control-corner" data-start-gated="true" aria-label="Kiosk sound control">
+      <button id="soundButton" type="button">Toggle kiosk sound</button>
+    </div>
     <section class="hud" data-start-gated="true" aria-live="polite">
       <div class="panel">
         <p class="speaker" id="speaker">Io</p>
@@ -1376,7 +1396,6 @@
             <span class="route-choice-label">Offered jobs</span>
           </div>
           <button id="deliverButton" type="button" data-aftersign-tap-choice="deliver-packet">Deliver at the blue kiosk</button>
-          <button id="soundButton" type="button">Wake kiosk sound</button>
               <button id="musicButton" type="button" hidden>Mute music</button>
         </div>
         <!-- #2265: ending host sits AFTER .controls so its appearance

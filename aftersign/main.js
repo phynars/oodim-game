@@ -1669,7 +1669,16 @@ const lineForBeat = () => {
   });
   if (state.story.episodeTwoActOneEnded && episodeTwoActOneEnding) {
     if (typeof document !== "undefined") {
-      renderEpisodeTwoActOneEnding(document, episodeTwoActOneEnding);
+      renderEpisodeTwoActOneEnding(document, episodeTwoActOneEnding, async () => {
+        state.story.episodeTwoActOneEnded = false;
+        state.story.nikoShortcutAnswer = null;
+        state.story.episodeTwoNightPost = true;
+        markStateDirty();
+        await persistAuthoritative({ dirty: true });
+        document.getElementById("episodeOneEnding")?.setAttribute("data-continuation", "");
+        renderText();
+        publishState();
+      });
       scrollDialogueToNewestSection(document.getElementById("episodeOneEnding"));
     }
     state.npcs.io.lastLine = "";
