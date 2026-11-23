@@ -3122,6 +3122,9 @@ const renderText = () => {
   // because a stale cached index.html (pre-#2261) may not have the
   // element yet — same posture as `ioLedgerLine` above.
   if (vigilChoice) {
+    // #2976: the tray is offered at io-next-job alongside the packet
+    // loop's controls; index.html keeps it in flow after `.controls` so
+    // it never covers "Deliver next packet" / "Ask what changed".
     const vigilVisible =
       isNextJobBeat
       && !state.story.endingId;

@@ -736,12 +736,14 @@
          letting the bottom-anchored HUD clip its final row. This tray is a
          distinct story decision, so it must not share the controls strip
          with stale packet actions while it is offered. */
+      /* #2976: the tray stays IN FLOW after `.controls`. A fixed tray
+         resolves against the transformed .hud/.panel, lands over the
+         controls strip, and intercepts the io-next-job packet-loop taps
+         ("Deliver next packet", "Ask what changed"). The panel scrolls
+         (#2800), so an in-flow tray is still reachable on a phone. */
       #vigilChoice[data-visible="true"] {
-        position: fixed;
-        left: max(12px, env(safe-area-inset-left));
-        right: max(12px, env(safe-area-inset-right));
-        bottom: max(12px, env(safe-area-inset-bottom));
-        z-index: 62;
+        position: relative;
+        margin-top: 12px;
         padding: 12px;
         border: 1px solid rgba(173, 242, 255, 0.32);
         border-radius: 14px;
