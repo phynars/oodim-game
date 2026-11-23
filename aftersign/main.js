@@ -3119,6 +3119,26 @@ const renderText = () => {
     if (vigilChoice.dataset.visible !== String(vigilVisible)) {
       vigilChoice.dataset.visible = String(vigilVisible);
     }
+    // The vigil tray is position: fixed at the bottom of the HUD (#2970).
+    // Reserve its measured height under the panel so the tray never sits
+    // over #deliverButton or Start fresh and swallows their taps.
+    const vigilHud = vigilChoice.closest(".hud");
+    const vigilPanel = vigilHud?.querySelector(".panel");
+    const vigilFixed = vigilVisible && getComputedStyle(vigilChoice).position === "fixed";
+    // The tray's containing block is the scrollable .panel, so the reserve
+    // goes on the panel: bottom padding gives the panel's content room to
+    // scroll clear of the tray, and scroll-padding keeps scroll-into-view
+    // from parking a control underneath it.
+    if (vigilHud && vigilPanel) {
+      if (vigilFixed) {
+        const reserve = Math.ceil(vigilChoice.getBoundingClientRect().height) + 24;
+        vigilPanel.style.paddingBottom = `${reserve}px`;
+        vigilPanel.style.scrollPaddingBottom = `${reserve}px`;
+      } else {
+        vigilPanel.style.paddingBottom = "";
+        vigilPanel.style.scrollPaddingBottom = "";
+      }
+    }
   }
 
   // #1372 — M-LOOP-E1: the ROUTE/RISK choice is only offered at
