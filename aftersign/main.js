@@ -5804,6 +5804,9 @@ const deliverPacket = (source = "hud-button") => {
 };
 
 const resetSliceSave = async () => {
+  resetConfirmationPending = false;
+  resetButton.textContent = "Start fresh";
+  resetButton.removeAttribute("data-reset-confirmation");
   window.localStorage.removeItem(storageKey);
   await clearAuthoritativeSave({ slot, playerId: state.player.id });
   packetIntent.reset();
@@ -6192,7 +6195,29 @@ soundButton.addEventListener("click", () => {
 musicButton.addEventListener("click", () => {
   void getAudioController().toggleMusic();
 });
-resetButton.addEventListener("click", resetSliceSave);
+let resetConfirmationPending = false;
+let resetConfirmationTimeout = null;
+const clearResetConfirmation = () => {
+  resetConfirmationPending = false;
+  if (resetConfirmationTimeout !== null) {
+    window.clearTimeout(resetConfirmationTimeout);
+    resetConfirmationTimeout = null;
+  }
+  resetButton.textContent = "Start fresh";
+  resetButton.removeAttribute("data-reset-confirmation");
+};
+resetButton.addEventListener("click", () => {
+  if (!resetConfirmationPending) {
+    resetConfirmationPending = true;
+    resetButton.textContent = "Confirm start fresh";
+    resetButton.setAttribute("data-reset-confirmation", "pending");
+    resetConfirmationTimeout = window.setTimeout(clearResetConfirmation, 10_000);
+    return;
+  }
+  clearResetConfirmation();
+  void resetSliceSave();
+});
+resetButton.addEventListener("blur", clearResetConfirmation);
 window.addEventListener("resize", resize, { passive: true });
 
 // Background-open guard listener: fire an immediate hasFocus:false tick

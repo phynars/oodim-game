@@ -42,6 +42,12 @@ test.describe("AFTERSIGN reset control touch regression", () => {
 
     await reset.tap();
     await expect(reset).toHaveAttribute("data-last-pointer-type", "touch");
+    await expect(reset).toHaveText("Confirm start fresh");
+    await expect(page.locator('[data-beat-id="packet-choice"]')).toBeVisible({
+      timeout: WAIT_MS,
+    });
+
+    await reset.tap();
     await expect(page.locator('[data-beat-id="packet-offered"]')).toBeVisible({
       timeout: WAIT_MS,
     });

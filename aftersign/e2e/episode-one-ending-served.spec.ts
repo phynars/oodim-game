@@ -404,6 +404,9 @@ test.describe("Saint Orra red-tag recall", () => {
       const reset = page.locator("#resetButton");
       await expect(reset).toBeVisible({ timeout: WAIT_MS });
       const clearsBefore = saves.landedClears;
+      // First tap arms the confirmation (#2955); the second one resets.
+      await reset.click();
+      await expect(reset).toHaveText("Confirm start fresh");
       await reset.click();
       // "Start fresh" rebuilds the state only after its save DELETE
       // returns; taps made before that are wiped with the old state.
@@ -523,6 +526,8 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     // Terminal-ending renderer restore path: the visible Start fresh tap
     // leaves the ending, and the controls hidden by the terminal branch
     // (marked data-ending-hidden) are un-hidden again.
+    await page.locator("#resetButton").click();
+    await expect(page.locator("#resetButton")).toHaveText("Confirm start fresh");
     await page.locator("#resetButton").click();
     await expect(page.locator("#episodeOneEnding [data-ending-id]")).toHaveCount(0);
     await expect(page.locator('[data-ending-hidden="true"]')).toHaveCount(0);

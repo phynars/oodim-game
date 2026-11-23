@@ -353,6 +353,9 @@ test.describe("Durable Act II ending (#2726)", () => {
     await tapVisible(page, 'button[data-choice-id="keep-official-record"]');
     await expect(card).toHaveAttribute("data-door-choice", "keep-official-record");
 
+    // First tap arms the confirmation (#2955); the second one resets.
+    await tapVisible(page, "#resetButton");
+    await expect(page.locator("#resetButton")).toHaveText("Confirm start fresh");
     await tapVisible(page, "#resetButton");
     await expect(card).toHaveCount(0, { timeout: WAIT_MS });
     await reachOrraPayback(page);

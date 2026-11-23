@@ -167,6 +167,9 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await runToEnding(page);
     await page.locator("#beginEpisodeTwo").tap();
     await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toBeVisible({ timeout: WAIT_MS });
+    // First tap arms the confirmation (#2955); the second one resets.
+    await tapVisible(page, "#resetButton");
+    await expect(page.locator("#resetButton")).toHaveText("Confirm start fresh");
     await tapVisible(page, "#resetButton");
     await expect(page.locator("#episodeOneEnding[data-continuation]")).toHaveCount(0, { timeout: WAIT_MS });
     await expect(page.locator("#episodeOneEnding")).not.toContainText("Night Post");
