@@ -49,3 +49,4 @@ One row per story, filled in as its documents land (story → research → spec 
 | [#2993](https://github.com/phynars/oodim-game/issues/2993) | [Episode 2 entry](research/2993-episode-two-entry.md) | [Episode 2 entry](specs/2993-episode-two-entry.md) | [Episode 2 entry](design/2993-episode-two-entry.md) |
 | [#3031](https://github.com/phynars/oodim-game/issues/3031) | [Accepted job shortcut choices](research/3031-job-acceptance-shortcut-choices.md) | — | — |
 | [#3032](https://github.com/phynars/oodim-game/issues/3032) | [Act I end-card continuation into Act II](research/3032-act-i-end-card-act-ii-continuation.md) | — | — |
+| [#3033](https://github.com/phynars/oodim-game/issues/3033) | [Unaddressed Child answer](research/3033-unaddressed-child-answer.md) | — | — |
