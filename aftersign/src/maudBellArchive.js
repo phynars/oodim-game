@@ -77,7 +77,7 @@ export const renderMaudBellArchiveEnding = (
   card.setAttribute("data-bell-ringing", "true");
   card.style.pointerEvents = "auto";
   const title = doc.createElement("h2");
-  title.textContent = doorOpen && !doorChoice ? "Unlit Door" : doorChoice ? "Episode 1 has ended" : "Act II — Bell Archive";
+  title.textContent = doorOpen && !doorChoice ? "The Unlit Door" : doorChoice ? "Episode 1 has ended" : "Act II — Bell Archive";
   const bell = doc.createElement("p");
   bell.className = "episode-one-ending__bell";
   bell.textContent = "The Bell Archive rings.";
@@ -99,11 +99,11 @@ export const renderMaudBellArchiveEnding = (
   door.style.pointerEvents = "auto";
   const doorChoices = [
     { id: "keep-official-record", label: "Keep the official record", consequence: `Record ${ending.name} in the official archive; Maud carries the district's darkness.` },
-    { id: "protect-private-lie", label: "Protect the private lie", consequence: `Seal ${ending.name}'s private record; Maud loses the district light.` },
+    { id: "protect-private-lie", label: "Protect the private lie", consequence: `Place a false name in ${ending.name}'s record and seal the true one away; Maud loses the district light.` },
     { id: "hang-new-sign", label: "Hang a new sign", consequence: `Replace ${ending.name}'s record with a new sign; Maud bears its false name.` },
   ];
   const showDoorChoices = () => {
-    title.textContent = doorChoice ? "Episode 1 has ended" : "Unlit Door";
+    title.textContent = doorChoice ? "Episode 1 has ended" : "The Unlit Door";
     dialogue.textContent = ending.doorDialogue;
     card.setAttribute("data-unlit-door-open", "true");
     door.remove();
@@ -159,7 +159,7 @@ export const renderMaudBellArchiveEnding = (
       button.setAttribute("data-choice-id", choice.id);
       button.textContent = choice.label;
       button.style.pointerEvents = "auto";
-      button.style.minHeight = "32px";
+      button.style.minHeight = "44px";
       button.style.padding = "2px 4px";
       button.style.fontSize = "12px";
       button.style.lineHeight = "1.15";
