@@ -37,14 +37,16 @@ The build reads existing beat, offered-job, packet, and dialogue state. It adds 
 
 ## Test map
 
-These are proposed, unimplemented served Playwright tests. They must be written failing first on main and use visible controls and page scrolling at 390×844.
+These are proposed, unimplemented served Playwright tests. Each uses visible controls and page scrolling at 390×844.
 
-| AC | Proposed test file | Test name | Must fail on main because |
+The build stage runs each test on main before it changes the runtime and records the result in the PR's Evidence. The third column gives the expected failure and the main-branch code behind it. A test that passes on main is a regression guard, not a fix. The PR must call it that and must not claim it closes the matching criterion with a change.
+
+| AC | Proposed test file | Test name | Expected red on main (to confirm first) |
 |---|---|---|---|
-| AC-1 | `aftersign/e2e/titled-intro-readable-jobs-and-io.spec.ts` | `shows AFTERSIGN and orientation before the first job control at 390x844` | The initial ordering is not pinned by this served test. |
-| AC-2 | `aftersign/e2e/titled-intro-readable-jobs-and-io.spec.ts` | `reaches every second-job control by page scrolling at 390x844` | Page-level reachability for the complete list is not pinned by this served test. |
-| AC-3 | `aftersign/e2e/titled-intro-readable-jobs-and-io.spec.ts` | `renders each Io remark separately after tapping Ask for next job` | Element boundaries after the player action are not pinned by this served test. |
-| AC-4 | `aftersign/e2e/titled-intro-readable-jobs-and-io.spec.ts` | `does not expose a non-transitioning Red tag — Saint Orra button` | The affordance is not pinned against its visible-state effect. |
+| AC-1 | `aftersign/e2e/titled-intro-readable-jobs-and-io.spec.ts` | `shows AFTERSIGN and orientation before the first job control at 390x844` | **May already pass.** The start screen in `aftersign/index.html` has `<h1>AFTERSIGN</h1>` and `#startScreenMessage` before `#beginButton`. If the test is green on main, the build treats AC-1 as a regression guard and changes nothing for it. |
+| AC-2 | `aftersign/e2e/titled-intro-readable-jobs-and-io.spec.ts` | `reaches every second-job control by page scrolling at 390x844` | `.panel` in `aftersign/index.html` sets `max-height: calc(100dvh - 36px)`, `overflow-y: auto` and `overscroll-behavior: contain`. Job controls below the card's fold can be reached only by scrolling inside the card, so the assertion that page scroll alone brings each control into view should fail. |
+| AC-3 | `aftersign/e2e/titled-intro-readable-jobs-and-io.spec.ts` | `renders each Io remark separately after tapping Ask for next job` | Io dialogue renders into the single `#line` paragraph (`createDialogueController({ line, speaker })` in `aftersign/main.js`). An Io turn that has more than one remark shares one element, so an assertion of one element per remark should fail. |
+| AC-4 | `aftersign/e2e/titled-intro-readable-jobs-and-io.spec.ts` | `does not expose a non-transitioning Red tag — Saint Orra button` | On a red-tag reload, `aftersign/main.js` sets `#packetButton` (a `<button>`) to `textContent = "Red tag — Saint Orra"`. The test taps it and asserts that visible state changes or that the label is not a button. It should fail if the tap changes nothing. |
 
 ## Risks
 
