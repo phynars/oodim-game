@@ -545,7 +545,7 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
     await tapChoice(page, "hang-new-sign");
 
     const card = await readEndingCard(page);
-    await expect(card.getByRole("heading", { name: "Episode 1 has ended" })).toBeVisible();
+    await expect(card.getByRole("heading", { name: "End of Episode 1" })).toBeVisible();
     await expect(card).toContainText("hung a new sign");
     const box = await card.boundingBox();
     expect(box).not.toBeNull();
