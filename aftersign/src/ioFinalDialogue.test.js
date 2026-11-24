@@ -22,6 +22,21 @@ describe("resolveIoFinalDialogue", () => {
     }
   });
 
+  it("names the remembered archive outcome when the official record is kept", () => {
+    expect(resolveIoFinalDialogue({
+      packetSealed: true,
+      doorChoice: "keep-official-record",
+      bellArchiveName: "the courier",
+      bellArchiveEndingId: "maud-bell-archive-lit",
+    }).text).toContain("the courier's district light stays lit");
+    expect(resolveIoFinalDialogue({
+      packetSealed: true,
+      doorChoice: "keep-official-record",
+      bellArchiveName: "Orra Bell",
+      bellArchiveEndingId: "maud-bell-archive-dark",
+    }).text).toContain("Orra Bell's district light goes out");
+  });
+
   it("does not speak before a valid visible door action", () => {
     expect(resolveIoFinalDialogue({ packetSealed: true, doorChoice: null })).toBeNull();
   });
