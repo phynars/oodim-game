@@ -67,6 +67,13 @@ export const createTerminalEndingRenderer = ({
     }
     recall?.remove();
     document.getElementById("saintOrraNameCase")?.remove();
+    // A withheld tag cannot be carried after the terminal ending. Keeping
+    // this control visible contradicted the ending card and let the player
+    // continue Episode 1 after it had declared itself complete.
+    if (state.player.redTagAccepted !== true) {
+      control?.remove();
+      return;
+    }
     if (!control) {
       control = document.createElement("button");
       control.type = "button";

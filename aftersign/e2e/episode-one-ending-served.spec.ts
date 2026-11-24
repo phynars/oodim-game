@@ -393,6 +393,19 @@ test("asking what changed retires that button but keeps the red tag takeable (#2
   await expect(page.locator("#packetButton")).toHaveText("Red tag — Saint Orra");
 });
 
+test("asking what changed then lighting the vigil visibly ends Episode 1 without accepting the red tag (#3023)", async ({ page }) => {
+  test.setTimeout(COLD_START_MS);
+  await page.setViewportSize(PHONE_VIEWPORT);
+  await page.goto(`/aftersign/?slot=withheld-red-tag-${Date.now()}`, { waitUntil: "load" });
+  await waitForVersion(page);
+  await runToEnding(page, "sealed", false, "ask-what-changed");
+
+  const endingCard = await readEndingCard(page);
+  await expect(endingCard).toContainText("red tag was not accepted");
+  await expect(endingCard).toContainText("district light goes out");
+  await expect(page.locator('button[data-choice-id="carry-red-tag-to-saint-orra"]')).toBeHidden();
+});
+
 async function carryRedTagToSaintOrra(page: Page): Promise<void> {
   const carry = page.locator(
     'button[data-choice-id="carry-red-tag-to-saint-orra"]:not([disabled])',
