@@ -4,7 +4,39 @@
 
 A phone player takes a delivery job, makes a consequential choice, and returns to a world that remembers mechanically: what the player can do next changes, not merely what Io says. Ship the smallest complete replayable loop at https://game.oodim.com/aftersign before adding characters or polish. Memory is progression; merged components are not acceptance.
 
-## Planning checkpoint — 2026-11-21 (supersedes everything below; sections below are history)
+## Planning checkpoint — 2026-11-24 (supersedes everything below; sections below are history)
+
+Authority: `docs/flagship/BRIEF.md` § "After M6: who closes a milestone and names the next". The Meta-Moderator (Charlie Shin) closed M6 and named M7. The active milestone is the open epic **#3030**.
+
+### M6 — CLOSED 2026-11-24 (epic #2893), on the blind closeout run `252ca190` against the deployed `a84849d`
+
+Question: "What job were you offered when you came back, and what did Niko know about you?"
+
+Player's answer (verbatim):
+> - The job was "The Ledger Run". I was to carry the sealed official record to the Night Post registry before the lamps go out. Io called it "the work the door left for you".
+> - Niko Thread knew which route I took on the red-tag delivery. Niko said "You took Behind the shuttered pharmacy. I noticed."
+> - Niko said nothing about the seal, the courier name or my kind return.
+> - After I refused the shortcut, Niko also knew that choice.
+
+Recorded taps that match: 14 "Behind the shuttered pharmacy", 22 "Keep the official record", 24 "Begin Episode 2", 25 "Accept The Ledger Run", 27 "Refuse the shortcut", 28 "Episode 2" (Act I end card).
+
+Verdict: **PASS**. The answer names the job, ties it to the door choice and names the route Niko recalled, and all three match the taps. No line from Io or Niko claimed a choice the player did not make. The player marked three lines UNSURE (the kind-return quip, "seal confirmed" on the red tag, "yourself"). These are copy clarity problems, not false memories: each is the shipped reaction to a tap the player actually made.
+
+### M7 — ACTIVE. Deadline: 2027-01-07 · epic #3030 · stories #3031, #3032, #3033
+
+Outcome: a phone player on the Episode 2 Act I end card taps "Continue to Act II". Their stored shortcut answer (take or refuse) decides where Act II opens: different text, controls and stored ids for each. There the Unaddressed Child asks one question ("I don't know" or a confident answer) and stores the answer. The Act II end card states the shortcut answer and the child's question and answer, and it restores in a later session.
+
+Metric: the two stored shortcut answers reach two different Act II openings on the served page. The child's answer is stored and restored. False memories in the blind closeout: 0.
+
+Acceptance: see epic #3030 (EARS). It includes a served 390×844 taps-only spec covering both shortcut branches, and new content that comes into view without a manual swipe.
+
+Closeout question: "Where did Act II begin for you, why there, and what did the child ask you and what did you answer?"
+
+Worked first: M6 closeout friction (#3031: Accept → "Accepted" and the shortcut choices land below the fold; same mechanism as #3010/#3011). Also in #3030's epic body: "Return to Io" auto-advances before it can be tapped; Niko has no introduction; old controls stay stacked.
+
+Deferred: new districts and 3D scenes, Episode 3, four weekly drops, Mara Vell as a speaking character.
+
+## Planning checkpoint — 2026-11-21 (history)
 
 Authority: `docs/flagship/BRIEF.md` § "Active milestone: M6 — Episode 2 opens: the door decides the job" and § "After M6: who closes a milestone and names the next". The active milestone is the open epic **#2893**. M4 closed 2026-11-14 and M5 closed 2026-11-19 (brief; not re-certified here).
 
