@@ -1685,15 +1685,15 @@ const lineForBeat = () => {
   });
   if (state.story.episodeTwoActOneEnded && episodeTwoActOneEnding) {
     if (typeof document !== "undefined") {
-      renderEpisodeTwoActOneEnding(document, episodeTwoActOneEnding, async () => {
-        state.story.episodeTwoActOneEnded = false;
-        state.story.nikoShortcutAnswer = null;
-        state.story.episodeTwoNightPost = true;
-        markStateDirty();
-        await persistAuthoritative({ dirty: true });
-        document.getElementById("episodeOneEnding")?.setAttribute("data-continuation", "");
-        renderText();
-        publishState();
+      renderEpisodeTwoActOneEnding(document, episodeTwoActOneEnding, () => {
+        const host = document.getElementById("episodeOneEnding");
+        if (!host) return;
+        host.setAttribute("data-continuation", "episode-two-current-content");
+        host.replaceChildren();
+        const message = document.createElement("p");
+        message.setAttribute("data-episode-two-current-content", "true");
+        message.textContent = "Episode 2 — Act I is the end of current content. The Night Post will open again when the next act arrives.";
+        host.append(message);
       });
       scrollDialogueToNewestSection(document.getElementById("episodeOneEnding"));
     }

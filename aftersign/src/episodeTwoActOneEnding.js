@@ -40,8 +40,8 @@ export const renderEpisodeTwoActOneEnding = (doc, ending, onContinue) => {
   const continueButton = doc.createElement("button");
   continueButton.type = "button";
   continueButton.textContent = "Episode 2 — Act I complete";
-  continueButton.setAttribute("data-episode-two-next-step", "night-post-kiosk");
-  continueButton.disabled = true;
+  continueButton.setAttribute("data-episode-two-next-step", "current-content-ending");
+  continueButton.addEventListener("click", () => onContinue?.());
   card.append(title, job, answer, continueButton);
   host.append(card);
   const line = doc.getElementById("line");
