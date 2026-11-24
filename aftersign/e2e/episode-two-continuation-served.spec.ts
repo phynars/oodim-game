@@ -117,6 +117,13 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await expect(page.locator("[data-niko-shortcut-choice]")).toHaveCount(0);
     await accept.tap();
     await expect(page.locator("#nikoThread")).toBeVisible({ timeout: WAIT_MS });
+    // #2991: a blind phone player reported that after Accept the Take/Refuse
+    // shortcut choices sat below the fold. Guard that both land inside the
+    // panel, tap-reachable, with no swipe.
+    const shortcutChoices = page.locator("[data-niko-shortcut-choice]");
+    await expect(shortcutChoices).toHaveCount(2);
+    await expectUnclippedInPanel(page, shortcutChoices.nth(0));
+    await expectUnclippedInPanel(page, shortcutChoices.nth(1));
     await expect(page.locator("#beginEpisodeTwo")).toHaveCount(0);
     await expect(page.locator("#episodeOneEnding [data-ending-id]")).toHaveCount(0);
   });
