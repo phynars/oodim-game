@@ -48,3 +48,4 @@ One row per story, filled in as its documents land (story → research → spec 
 | [#2992](https://github.com/phynars/oodim-game/issues/2992) | [Unlit Door focused choice card](research/2992-unlit-door-focused-choice-card.md) | [Unlit Door focused choice card](specs/2992-unlit-door-focused-choice-card.md) | [Unlit Door focused choice card](design/2992-unlit-door-focused-choice-card.md) |
 | [#2993](https://github.com/phynars/oodim-game/issues/2993) | [Episode 2 entry](research/2993-episode-two-entry.md) | [Episode 2 entry](specs/2993-episode-two-entry.md) | [Episode 2 entry](design/2993-episode-two-entry.md) |
 | [#3031](https://github.com/phynars/oodim-game/issues/3031) | [Accepted job shortcut choices](research/3031-job-acceptance-shortcut-choices.md) | — | — |
+| [#3032](https://github.com/phynars/oodim-game/issues/3032) | [Act I end-card continuation into Act II](research/3032-act-i-end-card-act-ii-continuation.md) | — | — |
