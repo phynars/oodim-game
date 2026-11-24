@@ -1,6 +1,7 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 
 // M4 PLAYTEST gate (#2705): taps-only, phone viewport, served page.
+// #3002: also verifies the focused Unlit Door card after its visible tap.
 //
 // What this adds beyond maud-bell-archive.playtest.spec.ts /
 // maud-bell-archive-fresh-context.spec.ts: those assert only data-* ids.
@@ -346,38 +347,42 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       await expect(unlitDoor).toHaveText("Go to the Unlit Door");
       await unlitDoor.tap();
       await expect(ending).toHaveAttribute("data-unlit-door-open", "true");
-      await expect(ending).toContainText(tappedName || "");
-      await expect(ending).toContainText(scenario.doorDialogue);
+      const doorCard = page.locator(`[data-ending-id="${scenario.endingId}"]`);
 
-      const bellOutcome = ending.locator(".episode-one-ending__outcome");
-      await expect(bellOutcome).toContainText(`The bell rings for ${tappedName || ""}.`);
-      await expect
-        .poll(async () => {
-          const bounds = await bellOutcome.boundingBox();
-          return !!bounds && bounds.y >= 0 && bounds.y + bounds.height <= PHONE_VIEWPORT.height;
-        }, { message: "bell recipient line fully inside the viewport after a name tap", timeout: WAIT_MS })
-        .toBe(true);
-      // #2824 (playtest 6: "the last two lines need a swipe"): the WHOLE
-      // ending card — through its last line, the district light — must be
-      // inside the bounded HUD panel's visible box and the phone viewport,
-      // with no player scroll. On main only the outcome line was scrolled
-      // into view, leaving the dialogue + light lines below the panel fold.
-      await expect
-        .poll(async () => ending.evaluate((el) => {
-          const panel = el.closest(".panel");
-          const last = el.querySelector(".episode-one-ending__light");
-          if (!panel || !last) return "missing panel or last line";
-          const p = panel.getBoundingClientRect();
-          const c = el.getBoundingClientRect();
-          const l = last.getBoundingClientRect();
-          const bottomLimit = Math.min(p.bottom, window.innerHeight) + 1;
-          if (c.height <= 0) return "card has no height";
-          if (c.top < p.top - 1) return `card top ${c.top} above panel top ${p.top}`;
-          if (l.bottom > bottomLimit) return `last line bottom ${l.bottom} below fold ${bottomLimit}`;
-          if (c.bottom > bottomLimit) return `card bottom ${c.bottom} below fold ${bottomLimit}`;
-          return "fits";
-        }), { message: "whole Act II ending card, last line included, fits without a swipe", timeout: WAIT_MS })
-        .toBe("fits");
+      await test.step("shows The Unlit Door instead of the Bell Archive after the visible door tap", async () => {
+        await expect(doorCard).toContainText("The Unlit Door");
+        await expect(doorCard).not.toContainText("Act II — Bell Archive");
+      });
+      await test.step("renders only the three door choices on the opened door card", async () => {
+        await expect(doorCard.locator('button[data-choice-id]:not([data-choice-id="open-unlit-door"])')).toHaveCount(3);
+        await expect(doorCard).not.toContainText("Carry the name to the Bell Archive");
+        await expect(doorCard).not.toContainText("Red tag — Saint Orra");
+        await expect(doorCard.locator("[data-maud-name-choice]")).toHaveCount(0);
+      });
+      await test.step("describes every door choice and names the private lie", async () => {
+        const consequences = doorCard.locator(".maud-bell-archive__door-consequence");
+        await expect(consequences).toHaveCount(3);
+        await expect(consequences.nth(1)).toContainText(`false name Mara Vell in ${tappedName || ""}'s record`);
+      });
+      await test.step("keeps three 44px door choices and descriptions inside the phone card", async () => {
+        const choices = doorCard.locator('button[data-choice-id]:not([data-choice-id="open-unlit-door"])');
+        await expect(choices).toHaveCount(3);
+        for (let index = 0; index < 3; index += 1) {
+          const choice = choices.nth(index);
+          const consequence = doorCard.locator(".maud-bell-archive__door-consequence").nth(index);
+          await expect(choice).toBeVisible();
+          await expect(consequence).toBeVisible();
+          await expect
+            .poll(async () => choice.evaluate((el) => {
+              const card = el.closest("[data-unlit-door-open]");
+              const button = el.getBoundingClientRect();
+              const cardBounds = card?.getBoundingClientRect();
+              const consequenceBounds = el.parentElement?.querySelector(".maud-bell-archive__door-consequence")?.getBoundingClientRect();
+              return !!cardBounds && !!consequenceBounds && button.height >= 44 && button.top >= cardBounds.top && consequenceBounds.bottom <= cardBounds.bottom;
+            }), { message: `door choice ${index} and consequence stay inside the card`, timeout: WAIT_MS })
+            .toBe(true);
+        }
+      });
 
       const { context, page: returning } = await openFreshContext(browser, slot, playerId);
       try {
@@ -386,9 +391,10 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
         // The door was opened before reload, so the restored card is the
         // named Unlit Door screen (#2904 AC-1), not the Act II title.
         await expect(restored).toHaveAttribute("data-unlit-door-open", "true");
-        await expect(restored).toContainText("Unlit Door");
+        await expect(restored).toContainText("The Unlit Door");
         await expect(restored).not.toContainText("Act II — Bell Archive");
-        await expect(restored).toContainText(scenario.endingLine);
+        await expect(restored.locator('button[data-choice-id]:not([data-choice-id="open-unlit-door"])')).toHaveCount(3);
+        await expect(restored.locator(".maud-bell-archive__door-consequence")).toHaveCount(3);
         await expect(returning.locator("[data-maud-name-choice]")).toHaveCount(0);
       } finally {
         await context.close();

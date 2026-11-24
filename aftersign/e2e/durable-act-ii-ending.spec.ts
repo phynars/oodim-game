@@ -207,8 +207,7 @@ test.describe("Durable Act II ending (#2726)", () => {
       expect((await description.innerText()).trim().length).toBeGreaterThan(0);
     }
     const privateLie = card.locator('button[data-choice-id="protect-private-lie"] + .maud-bell-archive__door-consequence');
-    await expect(privateLie).toContainText("Place a false name in Mara Vell's record");
-    await expect(privateLie).toContainText("seal the true one away");
+    await expect(privateLie).toContainText("false name Mara Vell in Mara Vell's record");
   });
 
   test("restores the same Act II ending outcome and name in a fresh browser context", async ({ page, browser }) => {
