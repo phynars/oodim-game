@@ -7,6 +7,50 @@ milestone closeout or human playtest; link evidence, don't paste it.
 
 ---
 
+## 2026-11-24 — Blind AI-stranger playtest #10 (M6 closeout, run `252ca190`) — PASSED → M6 CLOSED
+
+**AI stranger — not a human.** A fresh agent got only the URL
+(https://game.oodim.com/aftersign/) and played deployed `a84849d` in a 390×844
+touch page by tapping visible text. 29 recorded commands. The verdict is the
+operator's reading of the report against the recorded taps.
+
+**Path (recorded):** Take the safe job → Blue packet → Lit stair → Deliver
+packet → ("Return to Io" not found) → Kind return → Ask for next job → Take the
+second packet → Red tag → I listened → Behind the shuttered pharmacy → Deliver
+red tag → Carry the name → the courier → Go to the Unlit Door → Keep the
+official record → Begin Episode 2 → Accept The Ledger Run → Refuse the
+shortcut → Episode 2 (Act I end) → Mute music.
+
+**"What job were you offered when you came back, and what did Niko know about
+you?" (the player's answer):**
+> The job was "The Ledger Run". I was to carry the sealed official record to
+> the Night Post registry before the lamps go out. Io called it "the work the
+> door left for you".
+> Niko Thread knew which route I took on the red-tag delivery. Niko said "You
+> took Behind the shuttered pharmacy. I noticed."
+
+**Why this is a pass.** The job matches the door choice (command 22, "Keep the
+official record") and the accept tap (command 25). Niko's line names the route
+the player tapped (command 14, "Behind the shuttered pharmacy"). The player
+reached the Episode 2 Act I end card (command 28). No line told the player they
+did something they did not; the unsure lines ("seal confirmed" on the red tag
+before a tap, "Careful. Say that too often…" after "Kind return") are not
+counted as false.
+
+**Friction, carried into M7 (epic #3030):**
+- "Return to Io" moves before the tap lands (command 7).
+- After "Accept The Ledger Run", "Accepted" and the shortcut choices sit below
+  the fold; nothing visible changes until a swipe (same mechanism as #3010 and
+  #3011).
+- "Red tag — Saint Orra · seal confirmed" reads as chosen before any tap.
+- Old controls stack into a long log; swipes often move nothing.
+- Niko appears with no introduction; the Unlit Door options are explained only
+  in small text.
+
+**Next:** M7 (epic #3030), stories #3031, #3032, #3033.
+
+---
+
 ## Blind AI-stranger playtest #9 (M6 closeout, run `52b80054`) — NOT PASSED
 
 **AI stranger — not a human.** A fresh agent got only the URL
