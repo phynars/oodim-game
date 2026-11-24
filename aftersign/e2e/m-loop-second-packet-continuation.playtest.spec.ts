@@ -53,8 +53,9 @@ test.describe("AFTERSIGN second-packet continuity", () => {
     // before they need to scroll for a lower choice.
     const vigilTray = page.locator("#vigilChoice[data-visible=\"true\"]");
     await expect(vigilTray.locator(".scroll-cue")).toBeVisible({ timeout: WAIT_MS });
-    await expect(vigilTray.locator(".scroll-cue")).toContainText(/swipe.*panel/i);
-    await expect(page.locator(".panel")).toHaveCSS("overflow-y", "auto");
+    // #3020: the page scrolls, not a nested card.
+    await expect(vigilTray.locator(".scroll-cue")).toContainText(/scroll.*page/i);
+    await expect(page.locator(".panel")).toHaveCSS("overflow-y", "visible");
 
     await tapChoice("accept-second-packet");
     await tapChoice("deliver-packet");

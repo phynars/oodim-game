@@ -288,22 +288,16 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       await expect(maud).toContainText(MAUD_TITLE);
       await expect(maud).toContainText(MAUD_PROMPT);
 
-      // #2800: the card itself must fit the phone viewport (top edge
-      // reachable, not pushed above y=0 by the bottom-anchored HUD) and
-      // be a touch-scrollable container. On main the panel is unbounded,
-      // so its top sits above the viewport and this fails.
+      // #2800 / #3020: the card's top must stay reachable. Since #3020 the
+      // page scrolls (no nested-card swipe), so the card's top edge is at
+      // or below the document top — reachable by scrolling the page up.
       const panel = page.locator(".hud .panel");
       await expect
         .poll(async () => {
-          const box = await panel.boundingBox();
-          return box ? box.y >= 0 && box.y + box.height <= PHONE_VIEWPORT.height + 1 : false;
-        }, { message: "dialogue card fits inside the 390×844 viewport", timeout: WAIT_MS })
+          return panel.evaluate((el) => el.getBoundingClientRect().top + window.scrollY >= 0);
+        }, { message: "dialogue card top is reachable by page scroll", timeout: WAIT_MS })
         .toBe(true);
-      const panelStyle = await panel.evaluate((el) => {
-        const cs = getComputedStyle(el);
-        return { overflowY: cs.overflowY, touchAction: cs.touchAction };
-      });
-      expect(["auto", "scroll"]).toContain(panelStyle.overflowY);
+      await expect(panel).toHaveCSS("overflow-y", "visible");
 
       const nameButtons = page.locator("button[data-maud-name-choice]");
       await expect(nameButtons).toHaveCount(3, { timeout: WAIT_MS });

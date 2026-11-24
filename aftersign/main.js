@@ -847,9 +847,13 @@ const scrollDialogueToNewestSection = (section) => {
       const overflowBottom = targetRect.bottom - panelRect.bottom;
       const roomAbove = targetRect.top - panelRect.top;
       if (overflowBottom > 0) panel.scrollTop += Math.min(overflowBottom + 4, Math.max(0, roomAbove));
+      // #3020: the panel no longer scrolls on its own; the page does. Bring
+      // the newest section into the viewport by page scroll too.
+      if (typeof target.scrollIntoView === "function") target.scrollIntoView({ block: "nearest", inline: "nearest" });
       return;
     }
     panel.scrollTop = panel.scrollHeight;
+    window.scrollTo(0, document.documentElement.scrollHeight);
   };
   pin();
   requestAnimationFrame(() => {
@@ -2691,6 +2695,34 @@ const renderText = () => {
     stampBeat: stampAftersignBeat,
     setTextContentIfChanged,
   });
+  // #3020: Io's next-job turn is several remarks. Split the one `#line`
+  // paragraph into one block element per remark IN PLACE (same text, so
+  // `#line` text readers and layout are unchanged and nothing is shown
+  // twice — a duplicate list grew the card and shifted controls under a tap).
+  if (state.scene.beat === "io-next-job") {
+    const remarks = [
+      ioMemoryResponseLinesFor({ playerFlags: state.player.flags, npcMemoryFacts: state.npcs.io.memory })
+        .map((entry) => entry.text).join(" "),
+      findAftersignNpcMemoryRecallLine({ npcId: "io", remembers: state.packet.sealed ? "packet-sealed" : "packet-opened" })?.line ?? "",
+      servedIoDialogue.nextJobPrompt(),
+      servedIoDialogue.secondPacketAcknowledgement({
+        returnReason: state.player.returnReason,
+        playerName: state.player.name,
+      }).lines.join(" "),
+    ].filter(Boolean);
+    const alreadySplit = line.getElementsByClassName("io-remark").length === remarks.length;
+    if (remarks.length > 1 && !alreadySplit && line.textContent === remarks.join(" ")) {
+      const nodes = [];
+      remarks.forEach((remark, index) => {
+        if (index > 0) nodes.push(document.createTextNode(" "));
+        const span = document.createElement("span");
+        span.className = "io-remark";
+        span.textContent = remark;
+        nodes.push(span);
+      });
+      line.replaceChildren(...nodes);
+    }
+  }
   // An ending is terminal for this episode; the renderer hides only its
   // supplied story controls and restores those exact nodes after Start fresh.
   if (renderTerminalEndingControls()) return;
