@@ -2688,6 +2688,34 @@ const renderText = () => {
     stampBeat: stampAftersignBeat,
     setTextContentIfChanged,
   });
+  let ioNextJobRemarks = document.getElementById("ioNextJobRemarks");
+  if (state.scene.beat === "io-next-job") {
+    if (!ioNextJobRemarks) {
+      ioNextJobRemarks = document.createElement("div");
+      ioNextJobRemarks.id = "ioNextJobRemarks";
+      ioNextJobRemarks.setAttribute("aria-live", "polite");
+      line.insertAdjacentElement("afterend", ioNextJobRemarks);
+    }
+    const remarks = [
+      ioMemoryResponseLinesFor({ playerFlags: state.player.flags, npcMemoryFacts: state.npcs.io.memory })
+        .map((entry) => entry.text).join(" "),
+      findAftersignNpcMemoryRecallLine({ npcId: "io", remembers: state.packet.sealed ? "packet-sealed" : "packet-opened" })?.line ?? "",
+      servedIoDialogue.nextJobPrompt(),
+      servedIoDialogue.secondPacketAcknowledgement({
+        returnReason: state.player.returnReason,
+        playerName: state.player.name,
+      }).lines.join(" "),
+    ].filter(Boolean);
+    if (ioNextJobRemarks.children.length !== remarks.length) {
+      ioNextJobRemarks.replaceChildren(...remarks.map((remark) => {
+        const paragraph = document.createElement("p");
+        paragraph.textContent = remark;
+        return paragraph;
+      }));
+    }
+  } else if (ioNextJobRemarks) {
+    ioNextJobRemarks.remove();
+  }
   // An ending is terminal for this episode; the renderer hides only its
   // supplied story controls and restores those exact nodes after Start fresh.
   if (renderTerminalEndingControls()) return;

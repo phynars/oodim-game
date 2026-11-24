@@ -455,7 +455,8 @@
       body {
         margin: 0;
         min-height: 100vh;
-        overflow: hidden;
+        overflow-x: hidden;
+        overflow-y: auto;
         background: radial-gradient(circle at 50% 20%, #182033 0%, #05070c 65%);
         touch-action: manipulation;
       }
@@ -508,7 +509,10 @@
       }
 
       .hud {
-        position: fixed;
+        min-height: 100vh;
+        display: flex;
+        align-items: flex-end;
+        position: relative;
         /* The scene-transition vignette is a scene layer, not tray
            chrome. Keep every live control above it so a narrow-phone
            drift cannot darken or visually cut off a pill's right edge. */
@@ -571,10 +575,8 @@
            be scrolled back) and let it scroll by touch. 36px = the .hud's
            18px top + bottom padding. vh first as a fallback for engines
            without dvh. */
-        max-height: calc(100vh - 36px);
-        max-height: calc(100dvh - 36px);
-        overflow-y: auto;
-        overscroll-behavior: contain;
+        max-height: none;
+        overflow-y: visible;
         touch-action: pan-y;
         pointer-events: auto;
         border: 1px solid rgba(119, 232, 255, 0.34);
