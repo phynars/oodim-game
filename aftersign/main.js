@@ -10,7 +10,11 @@ import * as THREE from "three";
 import { createKioskScene } from "./src/kioskScene.js";
 import { resolveIoDialogue } from "./src/ioDialogueResolver.js";
 import { EPISODE_TWO_JOBS, episodeTwoJobForStory } from "./src/episodeTwoJobs.js";
-import { resolveEpisodeTwoActOneEnding, renderEpisodeTwoActOneEnding } from "./src/episodeTwoActOneEnding.js";
+import {
+  resolveEpisodeTwoActOneEnding,
+  renderEpisodeTwoActOneEnding,
+  renderEpisodeTwoCurrentContent,
+} from "./src/episodeTwoActOneEnding.js";
 import { NIKO_SHORTCUT_CHOICES, nikoRouteLine, nikoShortcutReceipt } from "./src/nikoThread.js";
 import { createCameraController } from "./src/presentation/cameraController.js";
 import { createDialogueController } from "./src/presentation/dialogueController.js";
@@ -1686,14 +1690,7 @@ const lineForBeat = () => {
   if (state.story.episodeTwoActOneEnded && episodeTwoActOneEnding) {
     if (typeof document !== "undefined") {
       renderEpisodeTwoActOneEnding(document, episodeTwoActOneEnding, () => {
-        const host = document.getElementById("episodeOneEnding");
-        if (!host) return;
-        host.setAttribute("data-continuation", "episode-two-current-content");
-        host.replaceChildren();
-        const message = document.createElement("p");
-        message.setAttribute("data-episode-two-current-content", "true");
-        message.textContent = "Episode 2 — Act I is the end of current content. The Night Post will open again when the next act arrives.";
-        host.append(message);
+        renderEpisodeTwoCurrentContent(document);
       });
       scrollDialogueToNewestSection(document.getElementById("episodeOneEnding"));
     }

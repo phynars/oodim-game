@@ -42,6 +42,23 @@ test.describe("Niko Thread shortcut continuation (#2953)", () => {
       const currentContent = page.locator('[data-episode-two-current-content="true"]');
       await expect(currentContent).toBeVisible();
       await expect(currentContent).toContainText("end of current content");
+      // PR #3015 F1: lineForBeat() runs every frame; the message must survive
+      // many frames, not just the first one after the tap.
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) => {
+            let frames = 30;
+            const step = () => (--frames <= 0 ? resolve() : requestAnimationFrame(step));
+            requestAnimationFrame(step);
+          }),
+      );
+      await page.waitForTimeout(500);
+      await expect(currentContent).toBeVisible();
+      await expect(page.locator('#episodeOneEnding [data-ending-id="episode-two-act-one"]')).toHaveCount(0);
+      await expect(page.locator("#episodeOneEnding")).toHaveAttribute(
+        "data-continuation",
+        "episode-two-current-content",
+      );
       const box = await currentContent.boundingBox();
       expect(box).not.toBeNull();
       expect(box!.y + box!.height).toBeLessThanOrEqual(844);
