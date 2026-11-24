@@ -1857,6 +1857,8 @@ const lineForBeat = () => {
         ioFinalDialogue: resolveIoFinalDialogue({
           packetSealed: firstPacketSealedForIoFinal(),
           doorChoice: state.story.doorChoice,
+          bellArchiveName: state.story.maudBellArchiveName,
+          bellArchiveEndingId: state.story.maudBellArchiveEndingId,
         }),
         onOpenDoor: () => { void choose("open-unlit-door"); },
         onChooseDoor: (choiceId) => { void choose(choiceId); },
@@ -4884,6 +4886,8 @@ const choose = async (choiceId) => {
       ioFinalDialogue: resolveIoFinalDialogue({
         packetSealed: firstPacketSealedForIoFinal(),
         doorChoice: state.story.doorChoice,
+        bellArchiveName: state.story.maudBellArchiveName,
+        bellArchiveEndingId: state.story.maudBellArchiveEndingId,
       }),
       onOpenDoor: () => { void choose("open-unlit-door"); },
       onChooseDoor: (nextChoiceId) => { void choose(nextChoiceId); },

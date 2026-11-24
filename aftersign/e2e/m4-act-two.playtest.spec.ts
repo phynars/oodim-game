@@ -378,17 +378,27 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
         }
       });
 
+      await test.step("keeps the official record through a visible door tap and names this archive outcome in Io's recap", async () => {
+        const officialRecord = doorCard.locator('button[data-choice-id="keep-official-record"]');
+        await expect(officialRecord).toBeVisible();
+        await officialRecord.tap();
+        const ioFinal = doorCard.locator("[data-io-final-id]");
+        await expect(ioFinal).toContainText(tappedName || "");
+        await expect(ioFinal).toContainText(scenario.endingLight === "District light: lit" ? "stays lit" : "goes out");
+      });
+
       const { context, page: returning } = await openFreshContext(browser, slot, playerId);
       try {
         const restored = returning.locator(`[data-ending-id="${scenario.endingId}"]`);
         await expect(restored).toBeVisible({ timeout: WAIT_MS });
-        // The door was opened before reload, so the restored card is the
-        // named Unlit Door screen (#2904 AC-1), not the Act II title.
-        await expect(restored).toHaveAttribute("data-unlit-door-open", "true");
-        await expect(restored).toContainText("The Unlit Door");
-        await expect(restored).not.toContainText("Act II — Bell Archive");
-        await expect(restored.locator('button[data-choice-id]:not([data-choice-id="open-unlit-door"])')).toHaveCount(3);
-        await expect(restored.locator(".maud-bell-archive__door-consequence")).toHaveCount(3);
+        // The visible official-record tap commits the ending; reload restores
+        // that committed card rather than the pre-choice Unlit Door controls.
+        await expect(restored).toHaveAttribute("data-door-choice", "keep-official-record");
+        await expect(restored).toContainText("Episode 1 has ended");
+        await expect(restored.locator("[data-io-final-id]")).toContainText(tappedName || "");
+        await expect(restored.locator("[data-io-final-id]")).toContainText(scenario.endingLight === "District light: lit" ? "stays lit" : "goes out");
+        await expect(restored.locator('button[data-choice-id]:not([data-choice-id="open-unlit-door"])')).toHaveCount(0);
+        await expect(restored.locator(".maud-bell-archive__door-consequence")).toHaveCount(0);
         await expect(returning.locator("[data-maud-name-choice]")).toHaveCount(0);
       } finally {
         await context.close();

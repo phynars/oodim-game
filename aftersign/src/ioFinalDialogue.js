@@ -33,10 +33,16 @@ const FINAL_LINES = {
 };
 
 /** Returns the final Io line for two player-authored facts, or null before a door action. */
-export const resolveIoFinalDialogue = ({ packetSealed, doorChoice } = {}) => {
+export const resolveIoFinalDialogue = ({ packetSealed, doorChoice, bellArchiveName, bellArchiveEndingId } = {}) => {
   const seal = packetSealed === true ? "sealed" : packetSealed === false ? "opened" : null;
   if (!seal || !["keep-official-record", "protect-private-lie", "hang-new-sign"].includes(doorChoice)) {
     return null;
   }
-  return FINAL_LINES[`${seal}:${doorChoice}`];
+  const line = FINAL_LINES[`${seal}:${doorChoice}`];
+  if (doorChoice !== "keep-official-record" || !bellArchiveName) return line;
+  const light = bellArchiveEndingId === "maud-bell-archive-lit" ? "stays lit" : "goes out";
+  return {
+    ...line,
+    text: `${line.text} ${bellArchiveName}'s district light ${light}.`,
+  };
 };
