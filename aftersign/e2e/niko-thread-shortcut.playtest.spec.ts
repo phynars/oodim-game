@@ -36,6 +36,8 @@ test.describe("Niko Thread shortcut continuation (#2953)", () => {
       );
       const nextStep = ending.locator('[data-episode-two-next-step="night-post-kiosk"]');
       await expect(nextStep).toBeVisible();
+      await expect(nextStep).toHaveText("Episode 2 — Act I complete");
+      await expect(nextStep).toBeDisabled();
       const box = await ending.boundingBox();
       expect(box).not.toBeNull();
       expect(box!.y + box!.height).toBeLessThanOrEqual(844);
@@ -51,9 +53,9 @@ test.describe("Niko Thread shortcut continuation (#2953)", () => {
       await expect(restoredEnding).toContainText(jobName);
       await expect(restoredEnding).toHaveAttribute("data-niko-shortcut-answer", answer);
       await freshContext.close();
-      await nextStep.tap();
-      await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toBeVisible({ timeout: WAIT });
-      await expect(page.locator("[data-niko-shortcut-choice]")).toHaveCount(2);
+      await expect(nextStep).toBeDisabled();
+      await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toHaveCount(0);
+      await expect(page.locator("[data-niko-shortcut-choice]")).toHaveCount(0);
       const reset = page.locator("#resetButton");
       await expect(reset).toBeVisible();
       await expect(reset).toBeEnabled();

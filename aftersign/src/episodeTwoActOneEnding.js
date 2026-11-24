@@ -39,11 +39,9 @@ export const renderEpisodeTwoActOneEnding = (doc, ending, onContinue) => {
   answer.setAttribute("data-npc", "niko-thread");
   const continueButton = doc.createElement("button");
   continueButton.type = "button";
-  continueButton.textContent = "Return to the Night Post kiosk";
+  continueButton.textContent = "Episode 2 — Act I complete";
   continueButton.setAttribute("data-episode-two-next-step", "night-post-kiosk");
-  continueButton.addEventListener("click", () => {
-    onContinue?.();
-  });
+  continueButton.disabled = true;
   card.append(title, job, answer, continueButton);
   host.append(card);
   const line = doc.getElementById("line");
