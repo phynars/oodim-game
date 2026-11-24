@@ -99,7 +99,7 @@ export const renderMaudBellArchiveEnding = (
   door.style.pointerEvents = "auto";
   const doorChoices = [
     { id: "keep-official-record", label: "Keep the official record", consequence: `Record ${ending.name} in the official archive; Maud carries the district's darkness.` },
-    { id: "protect-private-lie", label: "Protect the private lie", consequence: `Place a false name in ${ending.name}'s record and seal the true one away; Maud loses the district light.` },
+    { id: "protect-private-lie", label: "Protect the private lie", consequence: `Place the false name Mara Vell in ${ending.name}'s record and seal the true name away; Maud loses the district light.` },
     { id: "hang-new-sign", label: "Hang a new sign", consequence: `Replace ${ending.name}'s record with a new sign; Maud bears its false name.` },
   ];
   const showDoorChoices = () => {
@@ -107,6 +107,11 @@ export const renderMaudBellArchiveEnding = (
     dialogue.textContent = ending.doorDialogue;
     card.setAttribute("data-unlit-door-open", "true");
     door.remove();
+    if (!doorChoice) {
+      bell.remove();
+      outcome.remove();
+      light.remove();
+    }
     if (doorChoice) {
       card.setAttribute("data-door-choice", doorChoice);
       const selected = doorChoices.find((choice) => choice.id === doorChoice);
@@ -144,13 +149,10 @@ export const renderMaudBellArchiveEnding = (
       }
       return;
     }
-    // PR #2880 F3: one compact row in the slot the door button vacated, so
-    // the card (through its district-light line) still fits the HUD panel
-    // without a swipe (#2824).
     const choices = doc.createElement("div");
     choices.className = "maud-bell-archive__door-choices";
     choices.style.display = "grid";
-    choices.style.gap = "4px";
+    choices.style.gap = "8px";
     choices.style.marginTop = "4px";
     for (const choice of doorChoices) {
       const pair = doc.createElement("div");
@@ -160,9 +162,9 @@ export const renderMaudBellArchiveEnding = (
       button.textContent = choice.label;
       button.style.pointerEvents = "auto";
       button.style.minHeight = "44px";
-      button.style.padding = "2px 4px";
-      button.style.fontSize = "12px";
-      button.style.lineHeight = "1.15";
+      button.style.padding = "4px 8px";
+      button.style.fontSize = "14px";
+      button.style.lineHeight = "1.2";
       button.addEventListener("click", () => onChooseDoor?.(choice.id));
       const consequence = doc.createElement("p");
       consequence.className = "maud-bell-archive__door-consequence";
@@ -172,7 +174,7 @@ export const renderMaudBellArchiveEnding = (
       pair.append(button, consequence);
       choices.append(pair);
     }
-    light.after(choices);
+    dialogue.after(choices);
     pinCardInPanel(card);
   };
   door.addEventListener("click", () => {
