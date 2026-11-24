@@ -60,7 +60,7 @@ export const renderEpisodeTwoActOneEnding = (doc, ending, onContinue) => {
   answer.setAttribute("data-npc", "niko-thread");
   const continueButton = doc.createElement("button");
   continueButton.type = "button";
-  continueButton.textContent = "Episode 2 — Act I complete";
+  continueButton.textContent = "Episode 2 — Act I ends current content";
   continueButton.setAttribute("data-episode-two-next-step", "current-content-ending");
   continueButton.addEventListener("click", () => onContinue?.());
   card.append(title, job, answer, continueButton);
