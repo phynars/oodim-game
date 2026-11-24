@@ -47,6 +47,8 @@ export default defineConfig({
       "aftersign/src/aftersignPacketRecallLegacy.test.js",
       // #2517 — Episode 1 ending card renders bell, outcome line, recall
       "aftersign/src/episodeOneEnding.test.js",
+      // PR #3015 F1 — Act I current-content message survives per-frame renders
+      "aftersign/src/episodeTwoActOneEnding.test.js",
       // Io's final Act III line keyed by first-packet seal + door choice
       "aftersign/src/ioFinalDialogue.test.js",
       // #2988 — Niko names the route label the player tapped

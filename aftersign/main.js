@@ -10,7 +10,11 @@ import * as THREE from "three";
 import { createKioskScene } from "./src/kioskScene.js";
 import { resolveIoDialogue } from "./src/ioDialogueResolver.js";
 import { EPISODE_TWO_JOBS, episodeTwoJobForStory } from "./src/episodeTwoJobs.js";
-import { resolveEpisodeTwoActOneEnding, renderEpisodeTwoActOneEnding } from "./src/episodeTwoActOneEnding.js";
+import {
+  resolveEpisodeTwoActOneEnding,
+  renderEpisodeTwoActOneEnding,
+  renderEpisodeTwoCurrentContent,
+} from "./src/episodeTwoActOneEnding.js";
 import { NIKO_SHORTCUT_CHOICES, nikoRouteLine, nikoShortcutReceipt } from "./src/nikoThread.js";
 import { createCameraController } from "./src/presentation/cameraController.js";
 import { createDialogueController } from "./src/presentation/dialogueController.js";
@@ -1685,15 +1689,8 @@ const lineForBeat = () => {
   });
   if (state.story.episodeTwoActOneEnded && episodeTwoActOneEnding) {
     if (typeof document !== "undefined") {
-      renderEpisodeTwoActOneEnding(document, episodeTwoActOneEnding, async () => {
-        state.story.episodeTwoActOneEnded = false;
-        state.story.nikoShortcutAnswer = null;
-        state.story.episodeTwoNightPost = true;
-        markStateDirty();
-        await persistAuthoritative({ dirty: true });
-        document.getElementById("episodeOneEnding")?.setAttribute("data-continuation", "");
-        renderText();
-        publishState();
+      renderEpisodeTwoActOneEnding(document, episodeTwoActOneEnding, () => {
+        renderEpisodeTwoCurrentContent(document);
       });
       scrollDialogueToNewestSection(document.getElementById("episodeOneEnding"));
     }
