@@ -502,6 +502,11 @@
 
       canvas {
         display: block;
+        /* #3020: the scene is a fixed backdrop so the in-flow .hud (page-
+           scrollable, bottom-anchored by its min-height flex) starts in the
+           first viewport instead of below a 100vh canvas. */
+        position: fixed;
+        inset: 0;
         width: 100vw;
         height: 100vh;
         cursor: pointer;
@@ -732,6 +737,12 @@
          same posture as `.slice-save-controls` (#2225) below. */
       #vigilChoice {
         pointer-events: auto;
+      }
+
+      /* #3020: the page scrolls now, so a scrolled-to control keeps a small
+         gap above the phone bottom instead of landing on a sub-pixel edge. */
+      .hud button {
+        scroll-margin-bottom: 8px;
       }
 
       /* Keep the Saint Orra decision above the phone safe area rather than

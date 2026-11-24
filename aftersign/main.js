@@ -844,9 +844,13 @@ const scrollDialogueToNewestSection = (section) => {
       const overflowBottom = targetRect.bottom - panelRect.bottom;
       const roomAbove = targetRect.top - panelRect.top;
       if (overflowBottom > 0) panel.scrollTop += Math.min(overflowBottom + 4, Math.max(0, roomAbove));
+      // #3020: the panel no longer scrolls on its own; the page does. Bring
+      // the newest section into the viewport by page scroll too.
+      if (typeof target.scrollIntoView === "function") target.scrollIntoView({ block: "nearest", inline: "nearest" });
       return;
     }
     panel.scrollTop = panel.scrollHeight;
+    window.scrollTo(0, document.documentElement.scrollHeight);
   };
   pin();
   requestAnimationFrame(() => {

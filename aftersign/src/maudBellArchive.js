@@ -211,6 +211,8 @@ const pinCardInPanel = (card) => {
   const toTop = cardRect.top - panelRect.top;
   const delta = Math.min(toBottom, toTop);
   if (toBottom > 0 || toTop < 0) panel.scrollTop += delta;
+  // #3020: the panel grows with the page, so page-scroll the card in too.
+  if (typeof card.scrollIntoView === "function") card.scrollIntoView({ block: "nearest", inline: "nearest" });
 };
 
 // Bell ring: a short WAAPI swing on the bell line. Skipped when the
