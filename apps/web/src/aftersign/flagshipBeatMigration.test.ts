@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { restoreFlagshipBeat } from "../../../../aftersign/flagship-beat-migration.js";
+import { restoreFlagshipBeat } from "../../../../aftersign/src/runtime/flagshipBeatRestore.js";
 
 // Runs in the aftersign vitest blocking lane (see `vitest.config.ts`'s
 // `apps/web/src/aftersign/**/*.test.ts` include). Pins the branches of
