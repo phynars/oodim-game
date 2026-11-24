@@ -52,7 +52,6 @@ test.describe("Niko Thread shortcut continuation (#2953)", () => {
             requestAnimationFrame(step);
           }),
       );
-      await page.waitForTimeout(500);
       await expect(currentContent).toBeVisible();
       await expect(page.locator('#episodeOneEnding [data-ending-id="episode-two-act-one"]')).toHaveCount(0);
       await expect(page.locator("#episodeOneEnding")).toHaveAttribute(
