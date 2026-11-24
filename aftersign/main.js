@@ -2707,7 +2707,7 @@ const renderText = () => {
         playerName: state.player.name,
       }).lines.join(" "),
     ].filter(Boolean);
-    const alreadySplit = line.querySelectorAll(":scope > .io-remark").length === remarks.length;
+    const alreadySplit = line.getElementsByClassName("io-remark").length === remarks.length;
     if (remarks.length > 1 && !alreadySplit && line.textContent === remarks.join(" ")) {
       const nodes = [];
       remarks.forEach((remark, index) => {
