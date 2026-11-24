@@ -85,9 +85,9 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     test.setTimeout(TEST_TIMEOUT);
     await page.goto(`/aftersign/?slot=${slotFor("control")}`, { waitUntil: "load" });
     await runToEnding(page);
-    const heading = page.getByRole("heading", { name: "Episode 1 has ended" });
+    const heading = page.getByRole("heading", { name: "End of Episode 1" });
     const begin = page.locator("#beginEpisodeTwo");
-    await expect(heading).toHaveText("Episode 1 has ended");
+    await expect(heading).toHaveText("End of Episode 1");
     await expect(begin).toHaveText("Begin Episode 2");
     await expect(page.getByText("Episode 1 complete. Episode 2 is ready.", { exact: true })).toBeVisible();
     await expectUnclippedInPanel(page, heading);

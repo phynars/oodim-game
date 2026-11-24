@@ -77,7 +77,7 @@ export const renderMaudBellArchiveEnding = (
   card.setAttribute("data-bell-ringing", "true");
   card.style.pointerEvents = "auto";
   const title = doc.createElement("h2");
-  title.textContent = doorOpen && !doorChoice ? "The Unlit Door" : doorChoice ? "Episode 1 has ended" : "Act II — Bell Archive";
+  title.textContent = doorOpen && !doorChoice ? "The Unlit Door" : doorChoice ? "End of Episode 1" : "Act II — Bell Archive";
   const bell = doc.createElement("p");
   bell.className = "episode-one-ending__bell";
   bell.textContent = "The Bell Archive rings.";
@@ -103,7 +103,7 @@ export const renderMaudBellArchiveEnding = (
     { id: "hang-new-sign", label: "Hang a new sign", consequence: `Replace ${ending.name}'s record with a new sign; Maud bears its false name.` },
   ];
   const showDoorChoices = () => {
-    title.textContent = doorChoice ? "Episode 1 has ended" : "The Unlit Door";
+    title.textContent = doorChoice ? "End of Episode 1" : "The Unlit Door";
     dialogue.textContent = ending.doorDialogue;
     card.setAttribute("data-unlit-door-open", "true");
     door.remove();

@@ -394,7 +394,7 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
         // The visible official-record tap commits the ending; reload restores
         // that committed card rather than the pre-choice Unlit Door controls.
         await expect(restored).toHaveAttribute("data-door-choice", "keep-official-record");
-        await expect(restored).toContainText("Episode 1 has ended");
+        await expect(restored).toContainText("End of Episode 1");
         await expect(restored.locator("[data-io-final-id]")).toContainText(tappedName || "");
         await expect(restored.locator("[data-io-final-id]")).toContainText(scenario.endingLight === "District light: lit" ? "stays lit" : "goes out");
         await expect(restored.locator('button[data-choice-id]:not([data-choice-id="open-unlit-door"])')).toHaveCount(0);
