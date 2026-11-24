@@ -55,7 +55,7 @@ test.describe("AFTERSIGN titled intro, readable jobs, and Io dialogue (#3020)", 
     test.setTimeout(120_000);
     await page.goto(`/aftersign/?slot=io-remarks-${Date.now()}`, { waitUntil: "load" });
     await reachNextJob(page);
-    const remarks = page.locator("#ioNextJobRemarks > p");
+    const remarks = page.locator("#line > .io-remark");
     await expect(remarks).toHaveCount(4);
     for (const remark of await remarks.all()) await expect(remark).toBeVisible();
   });

@@ -2692,14 +2692,11 @@ const renderText = () => {
     stampBeat: stampAftersignBeat,
     setTextContentIfChanged,
   });
-  let ioNextJobRemarks = document.getElementById("ioNextJobRemarks");
+  // #3020: Io's next-job turn is several remarks. Split the one `#line`
+  // paragraph into one block element per remark IN PLACE (same text, so
+  // `#line` text readers and layout are unchanged and nothing is shown
+  // twice — a duplicate list grew the card and shifted controls under a tap).
   if (state.scene.beat === "io-next-job") {
-    if (!ioNextJobRemarks) {
-      ioNextJobRemarks = document.createElement("div");
-      ioNextJobRemarks.id = "ioNextJobRemarks";
-      ioNextJobRemarks.setAttribute("aria-live", "polite");
-      line.insertAdjacentElement("afterend", ioNextJobRemarks);
-    }
     const remarks = [
       ioMemoryResponseLinesFor({ playerFlags: state.player.flags, npcMemoryFacts: state.npcs.io.memory })
         .map((entry) => entry.text).join(" "),
@@ -2710,15 +2707,18 @@ const renderText = () => {
         playerName: state.player.name,
       }).lines.join(" "),
     ].filter(Boolean);
-    if (ioNextJobRemarks.children.length !== remarks.length) {
-      ioNextJobRemarks.replaceChildren(...remarks.map((remark) => {
-        const paragraph = document.createElement("p");
-        paragraph.textContent = remark;
-        return paragraph;
-      }));
+    const alreadySplit = line.querySelectorAll(":scope > .io-remark").length === remarks.length;
+    if (remarks.length > 1 && !alreadySplit && line.textContent === remarks.join(" ")) {
+      const nodes = [];
+      remarks.forEach((remark, index) => {
+        if (index > 0) nodes.push(document.createTextNode(" "));
+        const span = document.createElement("span");
+        span.className = "io-remark";
+        span.textContent = remark;
+        nodes.push(span);
+      });
+      line.replaceChildren(...nodes);
     }
-  } else if (ioNextJobRemarks) {
-    ioNextJobRemarks.remove();
   }
   // An ending is terminal for this episode; the renderer hides only its
   // supplied story controls and restores those exact nodes after Start fresh.
