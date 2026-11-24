@@ -393,6 +393,34 @@ test("asking what changed retires that button but keeps the red tag takeable (#2
   await expect(page.locator("#packetButton")).toHaveText("Red tag — Saint Orra");
 });
 
+test("asking what changed then lighting the vigil visibly ends Episode 1 without accepting the red tag (#3023)", async ({ page }) => {
+  test.setTimeout(COLD_START_MS);
+  await page.setViewportSize(PHONE_VIEWPORT);
+  await page.goto(`/aftersign/?slot=withheld-red-tag-${Date.now()}`, { waitUntil: "load" });
+  await waitForVersion(page);
+  // #3023: before the tap, the vigil control must say that it ends Episode 1.
+  await waitForBeat(page, "packet-offered");
+  await performPacketGesture(page, "sealed");
+  await waitForBeat(page, "packet-choice");
+  await tapChoice(page, "acknowledge-kiosk");
+  await tapChoice(page, "deliver-packet");
+  await waitForBeat(page, "io-return-recognition");
+  await tapReturnTone(page, "kind");
+  await waitForBeat(page, "return-tone-choice");
+  await tapChoice(page, "ask-for-next-job");
+  await waitForBeat(page, "io-next-job");
+  await tapChoice(page, "ask-what-changed");
+  const vigil = page.locator('button[data-choice-id="light-vigil"]:not([disabled])');
+  await expect(vigil).toBeVisible({ timeout: WAIT_MS });
+  await expect(vigil).toHaveText("Light the vigil — end Episode 1");
+  await vigil.click();
+  await waitForEndingPublished(page);
+
+  const endingCard = await readEndingCard(page);
+  await expect(endingCard).toContainText("red tag was not accepted");
+  await expect(endingCard).toContainText("district light goes out");
+});
+
 async function carryRedTagToSaintOrra(page: Page): Promise<void> {
   const carry = page.locator(
     'button[data-choice-id="carry-red-tag-to-saint-orra"]:not([disabled])',
