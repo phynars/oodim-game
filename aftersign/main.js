@@ -46,7 +46,10 @@ import {
   ORRA_RETURN_LINE_BY_ACTION,
   selectOrraRecognitionLine,
 } from "./src/orraRuntimeLane.ts";
-import { canonicalFlagshipBeat, restoreFlagshipBeat } from "./flagship-beat-migration.js";
+import {
+  canonicalFlagshipBeat,
+  restoreFlagshipBeat,
+} from "./src/runtime/flagshipBeatRestore.js";
 import { canDeliverFromScenePointer } from "./src/sceneDeliveryGate.ts";
 import { IO_RECOGNITION_BEAT_FEEDBACK } from "./recognition-beat-feedback.js";
 import { playRecognitionFeedback } from "./recognition-feedback.js";

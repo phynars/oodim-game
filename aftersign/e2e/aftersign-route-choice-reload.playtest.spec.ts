@@ -1,7 +1,7 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 
 // Playtest: #2326 (live-verify of #2322). The restore guard —
-// `restoreFlagshipBeat` in `aftersign/flagship-beat-migration.js` —
+// `restoreFlagshipBeat` in `aftersign/src/runtime/flagshipBeatRestore.js` —
 // remaps a persisted `packet-delivered` beat to `packet-choice` when
 // `packet.delivered` is false. It is invoked at BOTH restore paths:
 //   - cold-boot hydration (`aftersign/main.js:1079`-ish, inside the
@@ -230,6 +230,18 @@ test.describe("AFTERSIGN route-choice reload playtest", () => {
       // ever flipping to the post-delivery fork.
       await page.reload({ waitUntil: "load" });
       await waitForBeat(page, "packet-choice");
+      const reloadedBeat = await page.evaluate(() => {
+        const game = (
+          window as unknown as {
+            __game?: { getSnapshot: () => { scene: { beat: string } } };
+          }
+        ).__game;
+        return game?.getSnapshot?.().scene?.beat ?? null;
+      });
+      expect(
+        reloadedBeat,
+        "a real reload should retain the restored packet-choice beat",
+      ).toBe("packet-choice");
 
       // Visible-player-input proof on the RESTORED packet-choice: tap the
       // first route-memory choice inside `#routeRiskChoice` and assert the
