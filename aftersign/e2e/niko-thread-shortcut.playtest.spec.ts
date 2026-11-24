@@ -36,7 +36,8 @@ test.describe("Niko Thread shortcut continuation (#2953)", () => {
       );
       const nextStep = ending.locator('[data-episode-two-next-step="current-content-ending"]');
       await expect(nextStep).toBeVisible();
-      await expect(nextStep).toHaveText("Episode 2 — Act I complete");
+      // The visible control must warn before the player taps into the end-of-content notice.
+      await expect(nextStep).toHaveText("Episode 2 — Act I ends current content");
       await expect(nextStep).toBeEnabled();
       await nextStep.tap();
       const currentContent = page.locator('[data-episode-two-current-content="true"]');
