@@ -3151,6 +3151,11 @@ const renderText = () => {
   // second packet" stays: asking must not cost the player the red tag.
   const secondPacketResponseSettled =
     isNextJobBeat && ioSecondPacketPointerChoiceId === "ask-what-changed";
+  // The handoff already arms the red tag and rewrites the packet tile before
+  // the player explicitly takes it. Retire the Take control after that tap so
+  // the acceptance has a distinct visible result without blocking Deliver.
+  const secondPacketAccepted =
+    isNextJobBeat && state.player.redTagAccepted;
   // The selected second-packet response is already the beat's primary
   // `#line` copy through `ioSecondPacketResponseLine`. Do not stamp the
   // identical sentence into a sibling paragraph: on a phone this read as
@@ -3220,7 +3225,8 @@ const renderText = () => {
   const hideSkipReceipt =
     (isPacketDeliveredBeat && state.player.secondAction !== SECOND_ACTION.SKIPPED)
     || secondPacketResponseSettled;
-  const acknowledgeDisplay = hideAcknowledgeReceipt ? "none" : "";
+  const acknowledgeDisplay =
+    hideAcknowledgeReceipt || secondPacketAccepted ? "none" : "";
   const skipDisplay = hideSkipReceipt ? "none" : "";
   if (acknowledgeRouteButton.style.display !== acknowledgeDisplay) {
     acknowledgeRouteButton.style.display = acknowledgeDisplay;

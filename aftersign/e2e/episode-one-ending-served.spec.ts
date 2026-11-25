@@ -360,6 +360,31 @@ async function runToEnding(
   };
 }
 
+test("taking the second packet visibly retires Take while leaving its next steps reachable (#3063)", async ({ page }) => {
+  test.setTimeout(150_000);
+  await page.setViewportSize(PHONE_VIEWPORT);
+  await page.goto(`/aftersign/?slot=take-second-packet-${Date.now()}&player=take-second-packet-${Date.now()}`, { waitUntil: "load" });
+  await waitForVersion(page);
+  await waitForBeat(page, "packet-offered");
+  await performPacketGesture(page, "sealed");
+  await waitForBeat(page, "packet-choice");
+  await tapChoice(page, "acknowledge-kiosk");
+  await tapChoice(page, "deliver-packet");
+  await waitForBeat(page, "io-return-recognition");
+  await tapReturnTone(page, "kind");
+  await waitForBeat(page, "return-tone-choice");
+  await tapChoice(page, "ask-for-next-job");
+  await waitForBeat(page, "io-next-job");
+
+  await tapChoice(page, "accept-second-packet");
+
+  // The handoff pre-labels the packet, so retirement of the tapped Take
+  // control is the distinct visible acknowledgement.
+  await expect(page.locator('button[data-choice-id="accept-second-packet"]')).toBeHidden();
+  await expect(page.locator("#deliverButton")).toBeVisible();
+  await expect(page.locator('button[data-choice-id="light-vigil"]')).toBeVisible();
+});
+
 test("asking what changed retires that button but keeps the red tag takeable (#2981)", async ({ page }) => {
   test.setTimeout(150_000);
   await page.setViewportSize(PHONE_VIEWPORT);
