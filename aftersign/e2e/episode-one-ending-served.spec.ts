@@ -412,7 +412,9 @@ test("asking what changed then lighting the vigil visibly ends Episode 1 without
   await tapChoice(page, "ask-what-changed");
   const vigil = page.locator('button[data-choice-id="light-vigil"]:not([disabled])');
   await expect(vigil).toBeVisible({ timeout: WAIT_MS });
-  await expect(vigil).toHaveText("Light the vigil — end Episode 1");
+  await expect(vigil).toHaveText(
+    "Light the vigil — end Episode 1; the district light stays lit only if you kept the blue packet sealed and accepted the red tag",
+  );
   await vigil.click();
   await waitForEndingPublished(page);
 
