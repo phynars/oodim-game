@@ -3,6 +3,8 @@ import { performPacketGesture } from "./helpers/packetGesture";
 
 const WAIT_MS = 60_000;
 
+test.use({ viewport: { width: 390, height: 844 } });
+
 async function waitForVersion(page: Page): Promise<void> {
   await page.waitForFunction(
     () => (window as unknown as { __game?: { version?: number } }).__game?.version === 1,
@@ -35,16 +37,20 @@ async function playToSpareVigil(page: Page): Promise<void> {
   await tapChoice(page, "ask-for-next-job");
   await waitForBeat(page, "io-next-job");
   await tapChoice(page, "accept-second-packet");
-  // #3048 review F1: spare-vigil resolves the same Episode 1 ending as
-  // light-vigil (main.js "Both visible vigil choices complete the episode"),
-  // so its label must say it ends Episode 1, never that the episode stays open.
+  // Both visible actions commit the same ending, but their labels name the
+  // action-specific memory that Orra receives. The phone viewport assertion
+  // guards the original report: neither button may extend below the screen.
+  const light = page.locator('button[data-choice-id="light-vigil"]:not([disabled])').first();
   const spare = page.locator('button[data-choice-id="spare-vigil"]:not([disabled])').first();
+  await expect(light).toBeVisible({ timeout: WAIT_MS });
   await expect(spare).toBeVisible({ timeout: WAIT_MS });
-  await expect(spare).toHaveText(
-    "Spare the vigil — end Episode 1; the district light stays lit only if you kept the blue packet sealed and accepted the red tag",
-  );
-  await expect(spare).not.toContainText("stays open");
-  await tapChoice(page, "spare-vigil");
+  await expect(light).toHaveText("Light the vigil — end Episode 1; Orra remembers the light you kept");
+  await expect(spare).toHaveText("Spare the vigil — end Episode 1; Orra remembers your mercy");
+  await expect(light).not.toHaveText(await spare.textContent());
+  const spareBox = await spare.boundingBox();
+  expect(spareBox).not.toBeNull();
+  expect((spareBox?.y ?? Infinity) + (spareBox?.height ?? Infinity)).toBeLessThanOrEqual(844);
+  await spare.click();
 }
 
 // Contract change (#2568): the spare-vigil ending is terminal. After
