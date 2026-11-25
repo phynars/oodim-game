@@ -8,7 +8,12 @@ const ANSWER_COPY = Object.freeze({
 export const resolveEpisodeTwoActOneEnding = ({ story, delivery } = {}) => {
   const job = episodeTwoJobForStory(story);
   const answer = story?.nikoShortcutAnswer;
-  if (!job || delivery?.id !== job.deliveryId || !ANSWER_COPY[answer]) return null;
+  if (
+    !job
+    || story?.episodeTwoAcceptedJobId !== job.id
+    || delivery?.id !== job.deliveryId
+    || !ANSWER_COPY[answer]
+  ) return null;
   return Object.freeze({
     id: "episode-two-act-one",
     jobName: job.name,
@@ -51,6 +56,7 @@ export const renderEpisodeTwoActOneEnding = (doc, ending, onContinue) => {
   card.setAttribute("data-ending-id", ending.id);
   card.setAttribute("data-episode-two-job", ending.jobName);
   card.setAttribute("data-niko-shortcut-answer", ending.answer);
+  card.setAttribute("data-niko-shortcut-selected", "true");
   const title = doc.createElement("strong");
   title.textContent = "Episode 2 — Act I";
   const job = doc.createElement("p");

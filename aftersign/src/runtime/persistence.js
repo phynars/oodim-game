@@ -80,6 +80,10 @@ export const createPersistHelpers = ({
         typeof state.story?.firstPacketSealed === "boolean" ? state.story.firstPacketSealed : null,
       episodeTwoNightPost: state.story?.episodeTwoNightPost === true,
       episodeTwoActOneEnded: state.story?.episodeTwoActOneEnded === true,
+      episodeTwoAcceptedJobId:
+        typeof state.story?.episodeTwoAcceptedJobId === "string"
+          ? state.story.episodeTwoAcceptedJobId
+          : null,
       nikoShortcutAnswer:
         state.story?.nikoShortcutAnswer === "take" || state.story?.nikoShortcutAnswer === "refuse"
           ? state.story.nikoShortcutAnswer

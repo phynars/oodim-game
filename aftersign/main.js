@@ -1236,6 +1236,13 @@ const state = {
       typeof stored?.story?.firstPacketSealed === "boolean" ? stored.story.firstPacketSealed : null,
     episodeTwoNightPost: stored?.story?.episodeTwoNightPost === true,
     episodeTwoActOneEnded: stored?.story?.episodeTwoActOneEnded === true,
+    // Episode 2 acceptance is its own durable fact. A delivery id names the
+    // job's destination; it must not make a restored player appear to have
+    // accepted the job or chosen Niko's shortcut.
+    episodeTwoAcceptedJobId:
+      typeof stored?.story?.episodeTwoAcceptedJobId === "string"
+        ? stored.story.episodeTwoAcceptedJobId
+        : null,
     nikoShortcutAnswer:
       stored?.story?.nikoShortcutAnswer === NIKO_SHORTCUT_CHOICES.TAKE
       || stored?.story?.nikoShortcutAnswer === NIKO_SHORTCUT_CHOICES.REFUSE
@@ -1735,17 +1742,20 @@ const lineForBeat = () => {
         accept.textContent = `Accept ${job.name}`;
         accept.style.pointerEvents = "auto";
         accept.style.minHeight = "44px";
-        const accepted = state.delivery.id === job.deliveryId;
+        const accepted = state.story.episodeTwoAcceptedJobId === job.id;
         accept.disabled = accepted;
         if (accepted) {
           accept.textContent = "Accepted";
           jobCard.setAttribute("data-episode-two-delivery-id", job.deliveryId);
+          jobCard.setAttribute("data-episode-two-accepted-job-id", job.id);
         }
         accept.addEventListener("click", async () => {
           state.delivery.id = job.deliveryId;
+          state.story.episodeTwoAcceptedJobId = job.id;
           markStateDirty();
           await persistAuthoritative({ dirty: true });
           jobCard.setAttribute("data-episode-two-delivery-id", job.deliveryId);
+          jobCard.setAttribute("data-episode-two-accepted-job-id", job.id);
           accept.disabled = true;
           accept.textContent = "Accepted";
           // Rebuild the Night Post composition so Niko is added after the
@@ -1812,6 +1822,8 @@ const lineForBeat = () => {
             choice.type = "button";
             choice.textContent = label;
             choice.setAttribute("data-niko-shortcut-choice", answerId);
+            choice.setAttribute("aria-pressed", String(answer === answerId));
+            if (answer === answerId) choice.setAttribute("data-niko-shortcut-selected", "true");
             choice.style.pointerEvents = "auto";
             choice.style.minHeight = "44px";
             choice.disabled = Boolean(answer);
@@ -5915,6 +5927,9 @@ const resetSliceSave = async () => {
   state.story.episodeTwoNightPost = false;
   state.story.episodeTwoActOneEnded = false;
   state.story.nikoShortcutAnswer = null;
+  // PR #3053 F1: the accepted Episode 2 job is durable too; without this a
+  // replayed Night Post renders "Accepted" before Accept is tapped.
+  state.story.episodeTwoAcceptedJobId = null;
   // #3046: Start fresh must also clear the visible route selections. The
   // route-risk receipt is module state re-stamped by a MutationObserver on
   // every tray rebuild, and the acknowledge/skip tap writes aria-pressed +
