@@ -5880,8 +5880,64 @@ const deliverPacket = (source = "hud-button") => {
   playKioskConfirm();
   markStateDirty();
   setBeat("packet-delivered");
-  // The receipt remains at `packet-delivered` until the player taps the
-  // visible `return-to-io` choice, whose handler invokes `advance()`.
+  // The 1180 ms auto-advance below must stay (see
+  // deliveryTimerUniqueness.test.ts); a "Return to Io" tap before it
+  // fires advances through the same `advance()` path.
+  deliveryRecognitionTimeout = setTimeout(() => {
+    deliveryRecognitionTimeout = null;
+    // Settle-gate producer for the `choose-return-tone` guard above.
+    // This callback synchronously promotes the beat to
+    // `io-return-recognition` (via `setBeat(...)` further down); stamp
+    // the wall-clock instant NOW so a `pointerup` that races the
+    // transition — the "same gesture reinterpreted as the newly-
+    // rendered return-tone control" case — sees
+    // `performance.now() - enteredAt < RECOGNITION_SETTLE_MS` and is
+    // silently no-op'd. The stamp precedes `setBeat(...)` in source
+    // order but both run in this same synchronous callback body, so
+    // no tap handler can observe the beat transition before the
+    // stamp lands. `state.interaction` is initialized at boot; see
+    // its default shape further up.
+    if (!state.interaction || typeof state.interaction !== "object") {
+      state.interaction = {};
+    }
+    state.interaction.recognitionEnteredAt = performance.now();
+    const beatEndedAt = performance.now();
+    const durableOutcome = state.npcs.io.memory.find((fact) => fact.kind === "delivery-outcome")?.object === "opened" ? "opened" : "sealed";
+    const secondAction = secondActionFromMemory(state.npcs.io.memory);
+    const { packetOutcome: memory_ref, secondAction: secondAction_memory_ref } = memoryRefsFromMemory(state.npcs.io.memory);
+    const cameraMotion = finishMemoryBeatCameraProbe();
+    publishRecognitionBeatReport(MEMORY_RECOGNITION_FEEDBACK.durationMs);
+    memoryRecognitionBeatStartedAt = null;
+    pendingRecognitionArm = false;
+    lastImpactBurstChirpAt = null;
+    impactBurstParticles = [];
+    state.story.memoryBeat = {
+      kind: "io_packet_return",
+      outcome: durableOutcome,
+      secondAction,
+      memory_ref,
+      secondAction_memory_ref,
+      save_revision: state.save.revision,
+      startedAt: beatStartedAt,
+      endedAt: beatEndedAt,
+      cameraDeltaMeters: cameraMotion.cameraDeltaMeters,
+      cameraYawDegrees: cameraMotion.cameraYawDegrees,
+      inputLockMs: Math.min(MEMORY_RECOGNITION_FEEDBACK.durationMs, Math.max(0, Math.round(beatEndedAt - beatStartedAt))),
+      lineId: durableOutcome === "sealed"
+        ? "io_return_packet_sealed"
+        : "io_return_packet_opened",
+    };
+    markStateDirty();
+    setBeat("io-return-recognition");
+    // #2336: the only durable write on this path used to be the
+    // persistAuthoritative() below, which fires at `packet-delivered`
+    // BEFORE this 1180ms auto-advance. A reload while Io was already
+    // speaking the recognition line restored the stale
+    // `packet-delivered` beat (and armed the returning boot line over
+    // it). Persist the advanced beat so reload stays on
+    // `io-return-recognition`.
+    void persistAuthoritative({ dirty: true });
+  }, 1180);
   void persistAuthoritative({ dirty: true });
 };
 
