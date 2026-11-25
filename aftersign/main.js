@@ -11,6 +11,7 @@ import { createKioskScene } from "./src/kioskScene.js";
 import { resolveIoDialogue } from "./src/ioDialogueResolver.js";
 import { EPISODE_TWO_JOBS } from "./src/episodeTwoJobs.js";
 import {
+  ACT_TWO_OPENING_BEATS,
   renderEpisodeTwoActOneOrchestration,
   resolveEpisodeTwoActOneOrchestration,
 } from "./src/episodeTwoActOneOrchestrator.js";
@@ -1695,16 +1696,45 @@ const maudEndingCardIsCurrent = (doc) => {
   return Boolean(card.querySelector("#beginEpisodeTwo")) === wantsBegin;
 };
 
+const advanceToActTwoOpening = async () => {
+  const nextBeat = ACT_TWO_OPENING_BEATS[state.story.nikoShortcutAnswer];
+  if (!nextBeat) return;
+  state.scene.beat = nextBeat;
+  markStateDirty();
+  await persistAuthoritative({ dirty: true });
+  renderText();
+  publishState();
+};
+
 const lineForBeat = () => {
   const episodeTwoActOne = resolveEpisodeTwoActOneOrchestration({
+    beat: state.scene.beat,
     story: state.story,
     delivery: state.delivery,
   });
+  // #3032 — Act II beat gate runs BEFORE the episodeTwoActOneEnded gate so a
+  // reload that restores an Act II beat renders the opening, not the Act I
+  // ending card (which still has `episodeTwoActOneEnded === true` beneath it).
+  if (episodeTwoActOne.actTwoOpening) {
+    if (typeof document !== "undefined") {
+      renderEpisodeTwoActOneOrchestration({
+        doc: document,
+        ending: episodeTwoActOne.ending,
+        actTwoOpening: episodeTwoActOne.actTwoOpening,
+      });
+      scrollDialogueToNewestSection(document.getElementById("episodeOneEnding"));
+    }
+    state.npcs.io.lastLine = "";
+    return "";
+  }
   if (state.story.episodeTwoActOneEnded && episodeTwoActOne.ending) {
     if (typeof document !== "undefined") {
       renderEpisodeTwoActOneOrchestration({
         doc: document,
         ending: episodeTwoActOne.ending,
+        onContinueToActTwo: () => {
+          advanceToActTwoOpening();
+        },
       });
       scrollDialogueToNewestSection(document.getElementById("episodeOneEnding"));
     }
