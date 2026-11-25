@@ -58,6 +58,8 @@ async function reachRoundTwoRedTag(page: Page, slotPrefix: string) {
     // seal, not the first-packet funnel.
     await tap(page, "#packetButton");
     await tap(page, "#deliverButton");
+    await expect(page.locator("#deliverButton")).toHaveText("Return to Io");
+    await tap(page, "#deliverButton");
     await waitForBeat(page, "io-return-recognition");
 
     // Choose a tone and return to Io so the round-two red-tag beat
@@ -86,11 +88,16 @@ test.describe("AFTERSIGN red-tag round-two confirmation (#2829, #2356)", () => {
   // #2829 — tap the visible red-tag tile. Main keeps the original label
   // after this gesture, so the confirmation assertion fails there; the fix
   // names the successful seal on the tile.
-  test("round-two red-tag tap visibly confirms the seal", async ({ page }) => {
+  test("round-two red-tag delivery waits for Return to Io and has no stale listened receipt", async ({ page }) => {
     const packetButton = await reachRoundTwoRedTag(page, "red-tag-tap");
     await tap(page, "#packetButton");
     await expect(packetButton).toHaveText("Red tag — Saint Orra · seal confirmed");
     await waitForBeat(page, "packet-choice");
+    await tap(page, "#deliverButton");
+    await expect(page.locator("#deliverButton")).toHaveText("Return to Io");
+    await expect(page.getByText("You listened", { exact: true })).toHaveCount(0);
+    await tap(page, "#deliverButton");
+    await waitForBeat(page, "io-return-recognition");
   });
 
   // #2356 — NON-POINTER activation. Playwright's tap/click dispatch a

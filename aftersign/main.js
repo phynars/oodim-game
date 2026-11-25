@@ -5863,25 +5863,10 @@ const deliverPacket = (source = "hud-button") => {
     );
   }
   const { packetOutcomeFact, secondActionFact } = memoryFacts();
-  // #2799: `state.player.secondAction` resets to null for each new packet,
-  // so a later delivery without a route tap mints no route-attention fact.
-  // Replacing memory wholesale then dropped the player's earlier explicit
-  // "I listened", and the missing fact read as "ran early" → "You found
-  // the box anyway". Carry the prior explicit fact forward when this
-  // delivery has none; a fresh tap still overrides it.
-  const priorMemory = Array.isArray(state.npcs.io.memory) ? state.npcs.io.memory : [];
-  const priorRouteAttention = secondActionFromMemory(priorMemory) === SECOND_ACTION.DONE
-    ? SECOND_ACTION.DONE
-    : rememberedSkippedRoute(priorMemory)
-      ? SECOND_ACTION.SKIPPED
-      : null;
-  const priorRouteAttentionFact = priorRouteAttention
-    ? buildSecondActionMemoryFact({ secondAction: priorRouteAttention, sessionId })
-    : null;
-  state.npcs.io.memory = [
-    packetOutcomeFact,
-    secondActionFact ?? priorRouteAttentionFact,
-  ].filter(Boolean);
+  // Each delivery owns its route-attention fact. Carrying the prior packet's
+  // choice forward made a red-tag delivery render the blue packet's "You
+  // listened" receipt even when the player made no red-tag route choice.
+  state.npcs.io.memory = [packetOutcomeFact, secondActionFact].filter(Boolean);
   state.save.revision += 1;
   state.save.dirty = true;
   const beatStartedAt = performance.now();
@@ -5895,61 +5880,8 @@ const deliverPacket = (source = "hud-button") => {
   playKioskConfirm();
   markStateDirty();
   setBeat("packet-delivered");
-  deliveryRecognitionTimeout = setTimeout(() => {
-    deliveryRecognitionTimeout = null;
-    // Settle-gate producer for the `choose-return-tone` guard above.
-    // This callback synchronously promotes the beat to
-    // `io-return-recognition` (via `setBeat(...)` further down); stamp
-    // the wall-clock instant NOW so a `pointerup` that races the
-    // transition — the "same gesture reinterpreted as the newly-
-    // rendered return-tone control" case — sees
-    // `performance.now() - enteredAt < RECOGNITION_SETTLE_MS` and is
-    // silently no-op'd. The stamp precedes `setBeat(...)` in source
-    // order but both run in this same synchronous callback body, so
-    // no tap handler can observe the beat transition before the
-    // stamp lands. `state.interaction` is initialized at boot; see
-    // its default shape further up.
-    if (!state.interaction || typeof state.interaction !== "object") {
-      state.interaction = {};
-    }
-    state.interaction.recognitionEnteredAt = performance.now();
-    const beatEndedAt = performance.now();
-    const durableOutcome = state.npcs.io.memory.find((fact) => fact.kind === "delivery-outcome")?.object === "opened" ? "opened" : "sealed";
-    const secondAction = secondActionFromMemory(state.npcs.io.memory);
-    const { packetOutcome: memory_ref, secondAction: secondAction_memory_ref } = memoryRefsFromMemory(state.npcs.io.memory);
-    const cameraMotion = finishMemoryBeatCameraProbe();
-    publishRecognitionBeatReport(MEMORY_RECOGNITION_FEEDBACK.durationMs);
-    memoryRecognitionBeatStartedAt = null;
-    pendingRecognitionArm = false;
-    lastImpactBurstChirpAt = null;
-    impactBurstParticles = [];
-    state.story.memoryBeat = {
-      kind: "io_packet_return",
-      outcome: durableOutcome,
-      secondAction,
-      memory_ref,
-      secondAction_memory_ref,
-      save_revision: state.save.revision,
-      startedAt: beatStartedAt,
-      endedAt: beatEndedAt,
-      cameraDeltaMeters: cameraMotion.cameraDeltaMeters,
-      cameraYawDegrees: cameraMotion.cameraYawDegrees,
-      inputLockMs: Math.min(MEMORY_RECOGNITION_FEEDBACK.durationMs, Math.max(0, Math.round(beatEndedAt - beatStartedAt))),
-      lineId: durableOutcome === "sealed"
-        ? "io_return_packet_sealed"
-        : "io_return_packet_opened",
-    };
-    markStateDirty();
-    setBeat("io-return-recognition");
-    // #2336: the only durable write on this path used to be the
-    // persistAuthoritative() below, which fires at `packet-delivered`
-    // BEFORE this 1180ms auto-advance. A reload while Io was already
-    // speaking the recognition line restored the stale
-    // `packet-delivered` beat (and armed the returning boot line over
-    // it). Persist the advanced beat so reload stays on
-    // `io-return-recognition`.
-    void persistAuthoritative({ dirty: true });
-  }, 1180);
+  // The receipt remains at `packet-delivered` until the player taps the
+  // visible `return-to-io` choice, whose handler invokes `advance()`.
   void persistAuthoritative({ dirty: true });
 };
 
