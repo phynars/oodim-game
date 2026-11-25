@@ -1,16 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  CURRENT_CONTENT_CONTINUATION,
+  ACT_TWO_OPENING_BEATS,
+  ACT_TWO_OPENING_CONTINUATION,
+  actTwoOpeningForStory,
   renderEpisodeTwoActOneEnding,
-  renderEpisodeTwoCurrentContent,
+  renderEpisodeTwoActTwoOpening,
 } from "./episodeTwoActOneEnding.js";
-
-// PR #3015 F1 — lineForBeat() in main.js calls renderEpisodeTwoActOneEnding
-// on EVERY rAF frame while state.story.episodeTwoActOneEnded is true. After
-// the player taps "Episode 2 — Act I complete", the end-of-current-content
-// message must survive those repeated calls instead of being replaced by a
-// rebuilt Act I card one frame later.
 
 const ENDING = Object.freeze({
   id: "episode-two-act-one",
@@ -19,51 +15,65 @@ const ENDING = Object.freeze({
   answerLine: "Niko: You took the shortcut.",
 });
 
-describe("Episode 2 Act I ending → current-content message", () => {
+describe("Episode 2 Act I ending → Act II opening", () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="episodeOneEnding"></div><p id="line"></p>';
   });
 
-  it("tapping the enabled continue button shows the current-content message", () => {
+  it("shows a visible Continue to Act II control that invokes the continuation", () => {
     let continued = 0;
     const card = renderEpisodeTwoActOneEnding(document, ENDING, () => {
       continued += 1;
-      renderEpisodeTwoCurrentContent(document);
     });
-    const button = card.querySelector('[data-episode-two-next-step="current-content-ending"]');
+    const button = card.querySelector('[data-episode-two-next-step="act-two-continuation"]');
+    expect(button.textContent).toBe("Continue to Act II");
     expect(button.disabled).toBe(false);
     button.click();
     expect(continued).toBe(1);
-    const host = document.getElementById("episodeOneEnding");
-    expect(host.getAttribute("data-continuation")).toBe(CURRENT_CONTENT_CONTINUATION);
-    expect(host.querySelector("[data-episode-two-current-content]").textContent).toContain(
-      "end of current content",
-    );
   });
 
-  it("keeps the message across repeated per-frame renders (no Act I card rebuild)", () => {
-    const onContinue = () => renderEpisodeTwoCurrentContent(document);
-    const card = renderEpisodeTwoActOneEnding(document, ENDING, onContinue);
-    card.querySelector("button").click();
+  it.each(["take", "refuse"])(
+    "renders the %s Act II opening card with a stable id",
+    (answer) => {
+      const opening = actTwoOpeningForStory({
+        beat: ACT_TWO_OPENING_BEATS[answer],
+        story: { nikoShortcutAnswer: answer },
+      });
+      const card = renderEpisodeTwoActTwoOpening(document, opening);
+      expect(card.getAttribute("data-act-two-opening-id")).toBe(ACT_TWO_OPENING_BEATS[answer]);
+      expect(card.getAttribute("data-niko-shortcut-answer")).toBe(answer);
+      expect(card.textContent).toContain("Act II");
+      const host = document.getElementById("episodeOneEnding");
+      expect(host.getAttribute("data-continuation")).toBe(ACT_TWO_OPENING_CONTINUATION);
+    },
+  );
+
+  it("only resolves an Act II opening when its saved beat matches its saved answer", () => {
+    expect(
+      actTwoOpeningForStory({
+        beat: ACT_TWO_OPENING_BEATS.take,
+        story: { nikoShortcutAnswer: "refuse" },
+      }),
+    ).toBeNull();
+    expect(actTwoOpeningForStory({ beat: "io-return-recognition", story: { nikoShortcutAnswer: "take" } })).toBeNull();
+  });
+
+  it("keeps the Act II opening across repeated per-frame renders of the Act I ending", () => {
+    // Simulate: player tapped continue, Act II opening is now on screen;
+    // lineForBeat's next frame still sees episodeTwoActOneEnded===true and
+    // may try to re-render the Act I card. It must not overdraw the opening.
+    const opening = actTwoOpeningForStory({
+      beat: ACT_TWO_OPENING_BEATS.take,
+      story: { nikoShortcutAnswer: "take" },
+    });
+    renderEpisodeTwoActTwoOpening(document, opening);
     const host = document.getElementById("episodeOneEnding");
-    const message = host.querySelector("[data-episode-two-current-content]");
-    for (let frame = 0; frame < 60; frame += 1) {
-      renderEpisodeTwoActOneEnding(document, ENDING, onContinue);
+    const openingCard = host.querySelector(`[data-act-two-opening-id="${ACT_TWO_OPENING_BEATS.take}"]`);
+    for (let frame = 0; frame < 30; frame += 1) {
+      renderEpisodeTwoActOneEnding(document, ENDING, () => {});
     }
     expect(host.querySelector(`[data-ending-id="${ENDING.id}"]`)).toBeNull();
-    expect(host.querySelector("[data-episode-two-current-content]")).toBe(message);
-    expect(host.getAttribute("data-continuation")).toBe(CURRENT_CONTENT_CONTINUATION);
-  });
-
-  it("still rebuilds the Act I card after a reset clears the continuation", () => {
-    const card = renderEpisodeTwoActOneEnding(document, ENDING, () =>
-      renderEpisodeTwoCurrentContent(document),
-    );
-    card.querySelector("button").click();
-    const host = document.getElementById("episodeOneEnding");
-    host.removeAttribute("data-continuation");
-    host.replaceChildren();
-    const rebuilt = renderEpisodeTwoActOneEnding(document, ENDING, () => {});
-    expect(rebuilt.getAttribute("data-ending-id")).toBe(ENDING.id);
+    expect(host.querySelector(`[data-act-two-opening-id="${ACT_TWO_OPENING_BEATS.take}"]`)).toBe(openingCard);
+    expect(host.getAttribute("data-continuation")).toBe(ACT_TWO_OPENING_CONTINUATION);
   });
 });

@@ -34,17 +34,15 @@ test.describe("Niko Thread shortcut continuation (#2953)", () => {
       await expect(ending.locator('[data-npc="niko-thread"]')).toContainText(
         answer === "take" ? "registry clerk" : "long way",
       );
-      const nextStep = ending.locator('[data-episode-two-next-step="current-content-ending"]');
+      const nextStep = ending.locator('[data-episode-two-next-step="act-two-continuation"]');
       await expect(nextStep).toBeVisible();
-      // The visible control must warn before the player taps into the end-of-content notice.
-      await expect(nextStep).toHaveText("Episode 2 — Act I ends current content");
+      await expect(nextStep).toHaveText("Continue to Act II");
       await expect(nextStep).toBeEnabled();
       await nextStep.tap();
-      const currentContent = page.locator('[data-episode-two-current-content="true"]');
-      await expect(currentContent).toBeVisible();
-      await expect(currentContent).toContainText("end of current content");
-      // PR #3015 F1: lineForBeat() runs every frame; the message must survive
-      // many frames, not just the first one after the tap.
+      const opening = page.locator(`[data-act-two-opening-id="episode-two-act-two-${answer}-opening"]`);
+      await expect(opening).toBeVisible({ timeout: WAIT });
+      await expect(opening).toHaveAttribute("data-niko-shortcut-answer", answer);
+      // lineForBeat() runs every frame; the opening must survive many frames.
       await page.evaluate(
         () =>
           new Promise<void>((resolve) => {
@@ -53,13 +51,13 @@ test.describe("Niko Thread shortcut continuation (#2953)", () => {
             requestAnimationFrame(step);
           }),
       );
-      await expect(currentContent).toBeVisible();
+      await expect(opening).toBeVisible();
       await expect(page.locator('#episodeOneEnding [data-ending-id="episode-two-act-one"]')).toHaveCount(0);
       await expect(page.locator("#episodeOneEnding")).toHaveAttribute(
         "data-continuation",
-        "episode-two-current-content",
+        "episode-two-act-two-opening",
       );
-      const box = await currentContent.boundingBox();
+      const box = await opening.boundingBox();
       expect(box).not.toBeNull();
       expect(box!.y + box!.height).toBeLessThanOrEqual(844);
       const freshContext = await browser.newContext({
@@ -69,10 +67,10 @@ test.describe("Niko Thread shortcut continuation (#2953)", () => {
       });
       const freshPage = await freshContext.newPage();
       await freshPage.goto(page.url(), { waitUntil: "load" });
-      const restoredEnding = freshPage.locator('[data-ending-id="episode-two-act-one"]');
-      await expect(restoredEnding).toBeVisible({ timeout: WAIT });
-      await expect(restoredEnding).toContainText(jobName);
-      await expect(restoredEnding).toHaveAttribute("data-niko-shortcut-answer", answer);
+      const restoredOpening = freshPage.locator(`[data-act-two-opening-id="episode-two-act-two-${answer}-opening"]`);
+      await expect(restoredOpening).toBeVisible({ timeout: WAIT });
+      await expect(restoredOpening).toHaveAttribute("data-niko-shortcut-answer", answer);
+      await expect(freshPage.locator('[data-ending-id="episode-two-act-one"]')).toHaveCount(0);
       await freshContext.close();
       await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toHaveCount(0);
       await expect(page.locator("[data-niko-shortcut-choice]")).toHaveCount(0);

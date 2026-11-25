@@ -22,30 +22,63 @@ export const resolveEpisodeTwoActOneEnding = ({ story, delivery } = {}) => {
   });
 };
 
-export const CURRENT_CONTENT_CONTINUATION = "episode-two-current-content";
+// #3032 — stable beat ids that durably mark the Act II opening after the
+// player taps Continue to Act II from the Act I ending card. Persistence
+// stores `state.scene.beat`, and `restoreFlagshipBeat` passes unlisted beat
+// ids through, so these survive reload without a new migration entry.
+export const ACT_TWO_OPENING_BEATS = Object.freeze({
+  take: "episode-two-act-two-take-opening",
+  refuse: "episode-two-act-two-refuse-opening",
+});
 
-export const renderEpisodeTwoCurrentContent = (doc) => {
+const ACT_TWO_OPENING_COPY = Object.freeze({
+  take: "Act II — The clerk's lamp stays lit. Niko's shortcut bought you one quiet door.",
+  refuse: "Act II — The long way is still under your shoes. Niko lets your name arrive before you do.",
+});
+
+export const ACT_TWO_OPENING_CONTINUATION = "episode-two-act-two-opening";
+
+/**
+ * Resolves the Act II opening that the current beat + story should render.
+ * The beat is the source of truth: the stable Act II beat id decides that
+ * an opening renders, and `story.nikoShortcutAnswer` decides which one.
+ */
+export const actTwoOpeningForStory = ({ beat, story } = {}) => {
+  const answer = story?.nikoShortcutAnswer;
+  if (beat !== ACT_TWO_OPENING_BEATS[answer]) return null;
+  return Object.freeze({ id: beat, answer, copy: ACT_TWO_OPENING_COPY[answer] });
+};
+
+export const renderEpisodeTwoActTwoOpening = (doc, opening) => {
   const host = doc?.getElementById("episodeOneEnding");
-  if (!host) return null;
-  host.setAttribute("data-continuation", CURRENT_CONTENT_CONTINUATION);
+  if (!host || !opening) return null;
+  // Called once per frame by lineForBeat — keep the rendered card stable so
+  // repeated calls don't detach it between the current frame and the next.
+  const existing = host.querySelector?.(`[data-act-two-opening-id="${opening.id}"]`);
+  if (existing) return existing;
   host.replaceChildren();
-  const message = doc.createElement("p");
-  message.setAttribute("data-episode-two-current-content", "true");
-  message.textContent =
-    "Episode 2 — Act I is the end of current content. The Night Post will open again when the next act arrives.";
-  host.append(message);
-  return message;
+  host.setAttribute("data-continuation", ACT_TWO_OPENING_CONTINUATION);
+  const card = doc.createElement("section");
+  card.setAttribute("data-act-two-opening-id", opening.id);
+  card.setAttribute("data-niko-shortcut-answer", opening.answer);
+  const title = doc.createElement("strong");
+  title.textContent = "Episode 2 — Act II";
+  const copy = doc.createElement("p");
+  copy.textContent = opening.copy;
+  card.append(title, copy);
+  host.append(card);
+  doc.getElementById("line")?.replaceChildren();
+  return card;
 };
 
 export const renderEpisodeTwoActOneEnding = (doc, ending, onContinue) => {
   if (!doc || !ending) return null;
   const host = doc.getElementById("episodeOneEnding");
   if (!host) return null;
-  // PR #3015 F1: lineForBeat() calls this every frame. Once the player has
-  // tapped through to the current-content message, keep that message instead
-  // of rebuilding the Act I card over it.
-  if (host.getAttribute?.("data-continuation") === CURRENT_CONTENT_CONTINUATION) {
-    return host.querySelector?.("[data-episode-two-current-content]") ?? host;
+  // Once the player has advanced to the Act II opening, keep that card
+  // across the per-frame lineForBeat rebuild attempts.
+  if (host.getAttribute?.("data-continuation") === ACT_TWO_OPENING_CONTINUATION) {
+    return host.querySelector?.("[data-act-two-opening-id]") ?? host;
   }
   const existing = host.querySelector?.(`[data-ending-id="${ending.id}"]`);
   if (existing) return existing;
@@ -66,8 +99,10 @@ export const renderEpisodeTwoActOneEnding = (doc, ending, onContinue) => {
   answer.setAttribute("data-npc", "niko-thread");
   const continueButton = doc.createElement("button");
   continueButton.type = "button";
-  continueButton.textContent = "Episode 2 — Act I ends current content";
-  continueButton.setAttribute("data-episode-two-next-step", "current-content-ending");
+  continueButton.textContent = "Continue to Act II";
+  continueButton.setAttribute("data-episode-two-next-step", "act-two-continuation");
+  continueButton.style.pointerEvents = "auto";
+  continueButton.style.minHeight = "44px";
   continueButton.addEventListener("click", () => onContinue?.());
   card.append(title, job, answer, continueButton);
   host.append(card);
