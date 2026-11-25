@@ -5915,6 +5915,20 @@ const resetSliceSave = async () => {
   state.story.episodeTwoNightPost = false;
   state.story.episodeTwoActOneEnded = false;
   state.story.nikoShortcutAnswer = null;
+  // #3046: Start fresh must also clear the visible route selections. The
+  // route-risk receipt is module state re-stamped by a MutationObserver on
+  // every tray rebuild, and the acknowledge/skip tap writes aria-pressed +
+  // inline highlight on the reused route buttons; neither lives in `state`.
+  routeMemoryConfirmation = null;
+  delete routeRiskChoice.dataset.routeMemoryConfirmation;
+  delete routeRiskChoice.dataset.aftersignSelectedAction;
+  stampRouteMemoryConfirmation();
+  for (const button of [acknowledgeRouteButton, skipRouteButton, deliverButton]) {
+    button.setAttribute("aria-pressed", "false");
+    delete button.dataset.aftersignSelected;
+    button.style.backgroundColor = "";
+    button.style.borderColor = "";
+  }
   { 
     const endingHost = document.getElementById("episodeOneEnding");
     while (endingHost?.firstChild) endingHost.removeChild(endingHost.firstChild);
