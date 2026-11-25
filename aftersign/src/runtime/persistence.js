@@ -88,6 +88,14 @@ export const createPersistHelpers = ({
         state.story?.nikoShortcutAnswer === "take" || state.story?.nikoShortcutAnswer === "refuse"
           ? state.story.nikoShortcutAnswer
           : null,
+      // #3055 — the Unaddressed Child's exact answer is a separate durable
+      // field from Niko's take/refuse; the authoritative save whitelists
+      // the two valid ids so an unknown string never persists.
+      unaddressedChildAnswer:
+        state.story?.unaddressedChildAnswer === "i-dont-know"
+        || state.story?.unaddressedChildAnswer === "i-know-where-to-begin"
+          ? state.story.unaddressedChildAnswer
+          : null,
     },
     memory: clone(state.npcs.io.memory),
     npcs: {

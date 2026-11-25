@@ -5,6 +5,13 @@ const ANSWER_COPY = Object.freeze({
   refuse: "Niko: You refused the shortcut. The long way cost time, but not your name.",
 });
 
+// #3055 — the Unaddressed Child's two tappable answers. The ids are the
+// durable values whitelisted in persistence.js and in main.js's restore.
+const UNADDRESSED_CHILD_ANSWER_COPY = Object.freeze({
+  "i-dont-know": "I don't know.",
+  "i-know-where-to-begin": "I know where to begin.",
+});
+
 export const resolveEpisodeTwoActOneEnding = ({ story, delivery } = {}) => {
   const job = episodeTwoJobForStory(story);
   const answer = story?.nikoShortcutAnswer;
@@ -14,11 +21,18 @@ export const resolveEpisodeTwoActOneEnding = ({ story, delivery } = {}) => {
     || delivery?.id !== job.deliveryId
     || !ANSWER_COPY[answer]
   ) return null;
+  const unaddressedChildAnswer = UNADDRESSED_CHILD_ANSWER_COPY[story?.unaddressedChildAnswer]
+    ? story.unaddressedChildAnswer
+    : null;
   return Object.freeze({
     id: "episode-two-act-one",
     jobName: job.name,
     answer,
     answerLine: ANSWER_COPY[answer],
+    unaddressedChildAnswer,
+    unaddressedChildAnswerLine: unaddressedChildAnswer
+      ? UNADDRESSED_CHILD_ANSWER_COPY[unaddressedChildAnswer]
+      : null,
   });
 };
 
@@ -80,8 +94,14 @@ export const renderEpisodeTwoActOneEnding = (doc, ending, onContinue) => {
   if (host.getAttribute?.("data-continuation") === ACT_TWO_OPENING_CONTINUATION) {
     return host.querySelector?.("[data-act-two-opening-id]") ?? host;
   }
+  // #3055: the Act I card must rebuild once the Child's answer lands so
+  // the card names it. Without the state gate, the per-frame render keeps
+  // the unanswered variant forever.
+  const childState = ending.unaddressedChildAnswer ?? "unanswered";
   const existing = host.querySelector?.(`[data-ending-id="${ending.id}"]`);
-  if (existing) return existing;
+  if (existing && existing.getAttribute?.("data-unaddressed-child-state") === childState) {
+    return existing;
+  }
   host.replaceChildren();
   host.setAttribute("data-continuation", "episode-two-act-one-ending");
   const card = doc.createElement("section");
@@ -90,6 +110,7 @@ export const renderEpisodeTwoActOneEnding = (doc, ending, onContinue) => {
   card.setAttribute("data-episode-two-job", ending.jobName);
   card.setAttribute("data-niko-shortcut-answer", ending.answer);
   card.setAttribute("data-niko-shortcut-selected", "true");
+  card.setAttribute("data-unaddressed-child-state", childState);
   const title = doc.createElement("strong");
   title.textContent = "Episode 2 — Act I";
   const job = doc.createElement("p");
@@ -97,6 +118,31 @@ export const renderEpisodeTwoActOneEnding = (doc, ending, onContinue) => {
   const answer = doc.createElement("p");
   answer.textContent = ending.answerLine;
   answer.setAttribute("data-npc", "niko-thread");
+  // #3055 — Unaddressed Child question + answer, shown on the Act I ending
+  // card. Two tappable answer buttons are visible until one is tapped; then
+  // the next frame rebuilds the card naming the saved answer.
+  const childAnswer = doc.createElement("div");
+  childAnswer.setAttribute("data-npc", "unaddressed-child");
+  if (ending.unaddressedChildAnswer) {
+    const named = doc.createElement("p");
+    named.textContent = `Unaddressed Child: ${ending.unaddressedChildAnswerLine}`;
+    named.setAttribute("data-unaddressed-child-answer", ending.unaddressedChildAnswer);
+    childAnswer.append(named);
+  } else {
+    const question = doc.createElement("p");
+    question.textContent = "Unaddressed Child: Where do you begin?";
+    childAnswer.append(question);
+    for (const [answerId, label] of Object.entries(UNADDRESSED_CHILD_ANSWER_COPY)) {
+      const choice = doc.createElement("button");
+      choice.type = "button";
+      choice.textContent = label;
+      choice.setAttribute("data-unaddressed-child-answer", answerId);
+      choice.style.pointerEvents = "auto";
+      choice.style.minHeight = "44px";
+      choice.addEventListener("click", () => ending.onUnaddressedChildAnswer?.(answerId));
+      childAnswer.append(choice);
+    }
+  }
   const continueButton = doc.createElement("button");
   continueButton.type = "button";
   continueButton.textContent = "Continue to Act II";
@@ -104,7 +150,7 @@ export const renderEpisodeTwoActOneEnding = (doc, ending, onContinue) => {
   continueButton.style.pointerEvents = "auto";
   continueButton.style.minHeight = "44px";
   continueButton.addEventListener("click", () => onContinue?.());
-  card.append(title, job, answer, continueButton);
+  card.append(title, job, answer, childAnswer, continueButton);
   host.append(card);
   const line = doc.getElementById("line");
   line?.replaceChildren();

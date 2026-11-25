@@ -1248,6 +1248,14 @@ const state = {
       || stored?.story?.nikoShortcutAnswer === NIKO_SHORTCUT_CHOICES.REFUSE
         ? stored.story.nikoShortcutAnswer
         : null,
+    // #3055 — the Unaddressed Child's exact answer is durable; the
+    // whitelist matches persistence.js so an unknown value never leaks
+    // from a tampered save into the Act I ending card's named line.
+    unaddressedChildAnswer:
+      stored?.story?.unaddressedChildAnswer === "i-dont-know"
+      || stored?.story?.unaddressedChildAnswer === "i-know-where-to-begin"
+        ? stored.story.unaddressedChildAnswer
+        : null,
   },
   delivery: {
     // #2267: restore the saved job so a reload after "Ask for next job"
@@ -1731,7 +1739,19 @@ const lineForBeat = () => {
     if (typeof document !== "undefined") {
       renderEpisodeTwoActOneOrchestration({
         doc: document,
-        ending: episodeTwoActOne.ending,
+        ending: {
+          ...episodeTwoActOne.ending,
+          // #3055: the Unaddressed Child asks on the Act I ending card.
+          // The tapped answer is saved separately from Niko's take/refuse;
+          // the next frame rebuilds the card naming the exact answer.
+          onUnaddressedChildAnswer: async (answerId) => {
+            if (state.story.unaddressedChildAnswer) return;
+            state.story.unaddressedChildAnswer = answerId;
+            markStateDirty();
+            await persistAuthoritative({ dirty: true });
+            publishState();
+          },
+        },
         onContinueToActTwo: () => {
           advanceToActTwoOpening();
         },
@@ -5960,6 +5980,10 @@ const resetSliceSave = async () => {
   // PR #3053 F1: the accepted Episode 2 job is durable too; without this a
   // replayed Night Post renders "Accepted" before Accept is tapped.
   state.story.episodeTwoAcceptedJobId = null;
+  // #3055 — Start fresh must also drop the Unaddressed Child's answer, or
+  // a replayed Act I ending card re-renders the named line before the
+  // question is asked again.
+  state.story.unaddressedChildAnswer = null;
   // #3046: Start fresh must also clear the visible route selections. The
   // route-risk receipt is module state re-stamped by a MutationObserver on
   // every tray rebuild, and the acknowledge/skip tap writes aria-pressed +
