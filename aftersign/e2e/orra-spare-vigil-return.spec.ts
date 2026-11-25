@@ -35,6 +35,15 @@ async function playToSpareVigil(page: Page): Promise<void> {
   await tapChoice(page, "ask-for-next-job");
   await waitForBeat(page, "io-next-job");
   await tapChoice(page, "accept-second-packet");
+  // #3048 review F1: spare-vigil resolves the same Episode 1 ending as
+  // light-vigil (main.js "Both visible vigil choices complete the episode"),
+  // so its label must say it ends Episode 1, never that the episode stays open.
+  const spare = page.locator('button[data-choice-id="spare-vigil"]:not([disabled])').first();
+  await expect(spare).toBeVisible({ timeout: WAIT_MS });
+  await expect(spare).toHaveText(
+    "Spare the vigil — end Episode 1; the district light stays lit only if you kept the blue packet sealed and accepted the red tag",
+  );
+  await expect(spare).not.toContainText("stays open");
   await tapChoice(page, "spare-vigil");
 }
 
