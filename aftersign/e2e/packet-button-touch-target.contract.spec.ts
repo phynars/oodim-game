@@ -34,6 +34,10 @@ test.describe("AFTERSIGN packet button touch-target contract", () => {
 
     const packetButton = page.locator("#packetButton");
     await expect(packetButton).toBeVisible({ timeout: WAIT_MS });
+    await expect(
+      packetButton,
+      "the offered packet must tell players that a stationary hold breaks its seal",
+    ).toHaveText("Blue packet — Tap to keep the seal. Hold to break it.");
     const box = await packetButton.boundingBox();
 
     expect(box, "packetButton must have a rendered hit area").not.toBeNull();
