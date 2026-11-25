@@ -7,6 +7,53 @@ milestone closeout or human playtest; link evidence, don't paste it.
 
 ---
 
+## 2026-11-25 — Blind AI-stranger playtest #11 (M7 closeout, run `63636847`) — NOT PASSED → M7 stays open
+
+**AI stranger — not a human.** A fresh agent got only the URL
+(https://game.oodim.com/aftersign/) and played deployed `578df6f` in a 390×844
+touch page by tapping visible text. 35 recorded commands. The verdict is the
+operator's reading of the report against the recorded taps and epic #3030's
+acceptance criteria.
+
+**Path (recorded):** Take the safe job → Blue packet → I listened → Lit stair →
+Deliver packet → ("Return to Io" not found) → Kind return → Ask for next job →
+Take the second packet → Red tag → Behind the shuttered pharmacy → Deliver red
+tag → ("Return to Io" not found) → Carry the name → the courier → Go to the
+Unlit Door → Keep the official record → Mute music → Begin Episode 2 → Accept
+The Ledger Run → Refuse the shortcut → I don't know → Continue to Act II →
+(no controls) → Unmute music → Io.
+
+**"Where did Act II begin for you, why there, and what did the child ask you
+and what did you answer?" (the player's answer, condensed):**
+> Episode 2's Act II began right after I tapped "Continue to Act II", after I
+> refused Niko's shortcut. The screen said "The long way is still under your
+> shoes." The Unaddressed Child asked "Where do you begin?" and I answered
+> "I don't know."
+
+**Why this is NOT a pass.** The answer matches the recorded taps (commands 28,
+29, 30). The build, though, misses the milestone's acceptance criteria:
+- The child asks on the **Act I** end card (`renderEpisodeTwoActOneEnding`), not
+  in the Act II scene (AC2).
+- The Act II opening is one line with **no controls**, so the take and refuse
+  openings differ only in copy (AC1). There is no Act II end card that states
+  the shortcut answer and the child's Q&A (AC4). The player said: "I could not
+  tell if it was finished or stuck."
+- One FALSE line: the red-tag screen shows a "You listened" control that the
+  player never created on that delivery.
+- "Return to Io" failed again on both deliveries (taps 8 and 15). This was
+  carried over from M6 and is not fixed.
+
+**Filed:** #3067 (Act II scene, child and end card), #3068 (Return to Io
+auto-advance; stale "You listened" on the red tag).
+
+**Other friction (not blocking):** taps with no feedback for 1.5–3 s (Carry the
+name, the courier, Keep the official record, Accept); the page re-lays itself out
+under the player; Episode 1 vigil buttons ("Meet Saint Orra", "Light the vigil",
+"Spare the vigil") shown and then skipped; Orra names "the courier" before Maud's
+question; the music toggle flips back on its own.
+
+---
+
 ## 2026-11-24 — Blind AI-stranger playtest #10 (M6 closeout, run `252ca190`) — PASSED → M6 CLOSED
 
 **AI stranger — not a human.** A fresh agent got only the URL
