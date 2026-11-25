@@ -13,7 +13,7 @@ During the Act II route, the served dialogue panel asks the Unaddressed Child a 
 ## Acceptance criteria
 
 - AC-1: WHEN the Act II Unaddressed Child question is shown, THE served AFTERSIGN page SHALL show visible controls labelled **"I don't know."** and **"I know where to begin."** that a player can tap at a 390×844 viewport.
-- AC-2: WHEN the player taps either Unaddressed Child answer, THE game SHALL persist the corresponding exact answer as `story.nikoShortcutAnswer` in the authoritative slot save.
+- AC-2: WHEN the player taps either Unaddressed Child answer, THE game SHALL persist the corresponding exact answer as `story.unaddressedChildAnswer` in the authoritative slot save, leaving `story.nikoShortcutAnswer` (the Niko `take`/`refuse` choice) unchanged.
 - AC-3: WHEN the player reaches the Act II ending after answering the Unaddressed Child, THE ending card SHALL name the exact answer the player tapped.
 - AC-4: WHEN the same slot is opened in a fresh browser context after the player answered the Unaddressed Child, THE served AFTERSIGN page SHALL restore and display that slot's exact answer on its Act II ending card.
 
@@ -21,7 +21,8 @@ During the Act II route, the served dialogue panel asks the Unaddressed Child a 
 
 - Altering the existing Act II ending decision or its other remembered facts.
 - Adding a third answer, branching Act III, or changing the Unlit Door choice.
-- Migrating existing slots that have no `story.nikoShortcutAnswer` value.
+- Migrating existing slots that have no `story.unaddressedChildAnswer` value.
+- Changing the Niko shortcut answer (`story.nikoShortcutAnswer`, values `take`/`refuse`) or the Act I end-card that reads it.
 
 ## References
 
