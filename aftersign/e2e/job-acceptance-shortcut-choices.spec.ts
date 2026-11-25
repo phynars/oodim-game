@@ -36,6 +36,7 @@ test.describe("Episode 2 accepted job shortcut choices (#3049)", () => {
     const selected = page.locator('[data-ending-id="episode-two-act-one"][data-niko-shortcut-selected="true"]');
     await expect(selected).toHaveCount(1);
     await expect(selected).toHaveAttribute("data-niko-shortcut-answer", "take");
+    await expect(selected).toContainText("Carried: The Ledger Run.");
     await expect(page.locator("#acceptEpisodeTwoJob")).toHaveCount(0);
   });
 

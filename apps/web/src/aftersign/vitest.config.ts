@@ -49,6 +49,8 @@ export default defineConfig({
       "aftersign/src/episodeOneEnding.test.js",
       // PR #3015 F1 — Act I current-content message survives per-frame renders
       "aftersign/src/episodeTwoActOneEnding.test.js",
+      // #3058 — job selection and Act I ending share one orchestration boundary
+      "aftersign/src/episodeTwoActOneOrchestrator.test.js",
       // Io's final Act III line keyed by first-packet seal + door choice
       "aftersign/src/ioFinalDialogue.test.js",
       // #2988 — Niko names the route label the player tapped
