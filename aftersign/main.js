@@ -27,6 +27,7 @@ import { createJobOfferController } from "./src/interactions/jobOfferController.
 import { createPacketOfferController } from "./src/interactions/packetOfferController.js";
 import { createRouteChoiceController } from "./src/interactions/routeChoiceController.js";
 import { applyPhoneOfferLayout } from "./src/runtime/phoneOfferLayout.js";
+import { startRuntimeLoop } from "./src/runtime/runtimeLoop.js";
 import {
   DEFAULT_EVALUATE_PACKET_INTENT_THRESHOLDS,
   evaluatePacketIntent,
@@ -6622,7 +6623,6 @@ const tick = (now) => {
   // measured against the one-frame promise via the same primitive
   // the harness (bootWindowGame.ts) uses for its synthetic drives.
   drainPointerIntentsForRenderedFrame(performance.now());
-  requestAnimationFrame(tick);
 };
 
-requestAnimationFrame(tick);
+startRuntimeLoop({ onFrame: tick });
