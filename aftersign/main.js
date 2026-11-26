@@ -1813,6 +1813,17 @@ const lineForBeat = () => {
           host.setAttribute("data-continuation", "");
           renderText();
           publishState();
+          // M7 closeout runs 63636847 and 52bb9de5: after Accept nothing
+          // visibly changed. Niko's shortcut choices were rendered below the
+          // bounded `.hud .panel` fold, and the player had to swipe to find
+          // them. Bring the last choice into view so both stay visible
+          // without a swipe. scrollIntoView scrolls every scrolling ancestor,
+          // including the panel.
+          const shortcutChoices = document.getElementById("nikoThread")?.querySelectorAll("[data-niko-shortcut-choice]") ?? [];
+          const lastChoice = shortcutChoices[shortcutChoices.length - 1];
+          if (lastChoice && typeof lastChoice.scrollIntoView === "function") {
+            lastChoice.scrollIntoView({ block: "nearest", inline: "nearest" });
+          }
         });
         jobCard.append(jobName, jobBrief, offer, accept);
         if (!accepted) {
@@ -4409,6 +4420,12 @@ const packetRelease = (input) => {
 const routeChoiceController = createRouteChoiceController({
   getState: () => state,
   setState: ({ packetSealed, beat }) => {
+    // #3083: an explicit keep/open choice is a packet interaction, even when
+    // keeping the seal leaves `packet.sealed` unchanged.
+    if (!state.packet.delivered && state.story.firstPacketInteracted !== true) {
+      state.story.firstPacketInteracted = true;
+      markStateDirty();
+    }
     if (packetSealed !== null) {
       state.packet.sealed = packetSealed;
       markStateDirty();

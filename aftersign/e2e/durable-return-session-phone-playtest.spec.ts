@@ -144,8 +144,11 @@ test.describe("AFTERSIGN durable save/load phone playtest", () => {
     await expect(page.locator("#acknowledgeRouteButton")).toBeDisabled();
     await expect(page.locator("#skipRouteButton")).toBeDisabled();
 
-    // The only state-changing action is a player's tap on the rendered
-    // delivery control. It causes the shipping backend save.
+    // #3083: an untouched packet makes no seal claim, so the player taps the
+    // packet to keep its seal before delivering. The delivery tap then
+    // causes the shipping backend save.
+    await tap(page, "#packetButton");
+    await expect(page.locator("#packetButton")).toHaveAttribute("data-packet-button-copy-state", "sealed");
     await tap(page, "#deliverButton");
     await expect
       .poll(async () => (await snapshot(page)).packet.delivered, { timeout: WAIT_MS })

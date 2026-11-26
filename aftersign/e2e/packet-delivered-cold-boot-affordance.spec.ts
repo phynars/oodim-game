@@ -176,6 +176,10 @@ test.describe("AFTERSIGN packet-delivered cold-boot affordance", () => {
       expect(boot.scene.beat).toBe("packet-offered");
       expect(boot.packet.delivered).toBe(false);
 
+      // #3083: keep the seal with a visible packet tap; an untouched packet
+      // makes no seal claim on return.
+      await tap(page, "#packetButton");
+      await expect(page.locator("#packetButton")).toHaveAttribute("data-packet-button-copy-state", "sealed");
       await tap(page, "#deliverButton");
       await expect
         .poll(async () => (await snapshot(page)).packet.delivered, { timeout: WAIT_MS })

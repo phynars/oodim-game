@@ -21,6 +21,8 @@ const base = (overrides: Partial<Input> = {}): Input => ({
   player: { id: "p1", name: "Ash", flags: [], returnReason: null, routeRisk: null },
   npcs: { io: { memory: [] }, orra: { memory: [] } },
   deliveryId: "blue-route",
+  // #3083: these checks pin routing for a player who touched the packet.
+  firstPacketInteracted: true,
   returningBootLine: null,
   returningBootBeat: null,
   secondPacketResponseLine: null,
@@ -95,6 +97,21 @@ export async function runIoDialogueResolverChecks(): Promise<void> {
     "recognition red-tag line requires the stored acceptance fact (#2790)",
   );
   assertEqual(resolveIoDialogue(base({ beat: "io-return-recognition" })), "RECOG:true", "recognition follows packet");
+  assertEqual(
+    resolveIoDialogue(base({ beat: "io-return-recognition", firstPacketInteracted: false })),
+    "DEFAULT",
+    "untouched packet makes no seal claim at recognition (#3083)",
+  );
+  assertEqual(
+    resolveIoDialogue(base({
+      beat: "packet-choice",
+      firstPacketInteracted: false,
+      returningBootLine: "BOOT",
+      returningBootBeat: "packet-choice",
+    })) === "BOOT",
+    false,
+    "untouched packet suppresses the returning seal boot line (#3083)",
+  );
   assertEqual(
     resolveIoDialogue(base({ beat: "io-return-recognition", breakMode: "wrong-io-line" })),
     "RECOG:false",
