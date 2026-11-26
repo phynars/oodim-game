@@ -86,7 +86,10 @@ export const renderEpisodeTwoActTwoOpening = (doc, opening, onUnaddressedChildAn
     const endCard = doc.createElement("p");
     endCard.setAttribute("data-act-two-end-card", "true");
     endCard.textContent = `Act II complete. Shortcut answer: ${opening.answer}. Unaddressed Child: Where do you begin? Your answer: ${UNADDRESSED_CHILD_ANSWER_COPY[childAnswer]}`;
-    child.append(endCard);
+    const continuation = doc.createElement("p");
+    continuation.setAttribute("data-act-two-continuation", "to-be-continued");
+    continuation.textContent = "To be continued.";
+    child.append(endCard, continuation);
   } else {
     const question = doc.createElement("p");
     question.textContent = "Unaddressed Child: Where do you begin?";
