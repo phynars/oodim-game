@@ -83,6 +83,7 @@ async function tapReturnToIo(page: Page): Promise<ReturnBeat> {
   // The timer won: the tap struck the visible "Blunt return" tone. It
   // commits, unless the #2174 settle gate refused it inside its 120ms
   // window, which leaves Io's recognition beat up. Let the commit land.
+  // allowed: a refused stroke leaves no state change to wait on, so the settle window must elapse
   await page.waitForTimeout(400);
   const beat = (await snapshot(page)).scene.beat;
   expect(["io-return-recognition", "return-tone-choice"]).toContain(beat);
