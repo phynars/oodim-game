@@ -40,6 +40,13 @@ test.describe("Act I end-card Act II continuation (#3054)", () => {
         ? "I know where to begin."
         : "I don't know.";
       await selectedAnswer.tap({ timeout: WAIT });
+      const childResponse = opening.locator('[data-unaddressed-child-response="true"]');
+      await expect(childResponse).toContainText(
+        answer === "take"
+          ? "Then show me the first door."
+          : "Then we begin by listening together.",
+      );
+      await expect(opening.locator('[data-act-two-continuation="to-be-continued"]')).toHaveText("To be continued.");
       const endCard = opening.locator('[data-act-two-end-card="true"]');
       await expect(endCard).toContainText(`Shortcut answer: ${answer}`);
       await expect(endCard).toContainText("Where do you begin?");
