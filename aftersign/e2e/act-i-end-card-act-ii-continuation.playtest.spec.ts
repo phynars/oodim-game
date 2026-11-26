@@ -31,6 +31,24 @@ test.describe("Act I end-card Act II continuation (#3054)", () => {
       const opening = page.locator(`[data-act-two-opening-id="episode-two-act-two-${answer}-opening"]`);
       await expect(opening).toBeVisible({ timeout: WAIT });
       await expect(opening).toContainText("Act II");
+      const uncertainAnswer = opening.getByRole("button", { name: "I don't know." });
+      const confidentAnswer = opening.getByRole("button", { name: /I know where to begin/ });
+      await expect(uncertainAnswer).toBeVisible({ timeout: WAIT });
+      await expect(confidentAnswer).toBeVisible({ timeout: WAIT });
+      const selectedAnswer = answer === "take" ? confidentAnswer : uncertainAnswer;
+      const selectedAnswerCopy = answer === "take"
+        ? "I know where to begin."
+        : "I don't know.";
+      await selectedAnswer.tap({ timeout: WAIT });
+      const endCard = opening.locator('[data-act-two-end-card="true"]');
+      await expect(endCard).toContainText(`Shortcut answer: ${answer}`);
+      await expect(endCard).toContainText("Where do you begin?");
+      await expect(endCard).toContainText(selectedAnswerCopy);
+      await page.reload({ waitUntil: "load" });
+      const restoredEndCard = page.locator('[data-act-two-end-card="true"]');
+      await expect(restoredEndCard).toContainText(`Shortcut answer: ${answer}`, { timeout: WAIT });
+      await expect(restoredEndCard).toContainText("Where do you begin?");
+      await expect(restoredEndCard).toContainText(selectedAnswerCopy);
     });
   }
 
