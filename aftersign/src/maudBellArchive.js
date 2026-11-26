@@ -180,6 +180,7 @@ export const renderMaudBellArchiveEnding = (
   door.addEventListener("click", () => {
     onOpenDoor?.();
     showDoorChoices();
+    pinCardInPanel(card);
   });
   card.append(title, bell, outcome, dialogue, light, door);
   // A restored save whose door was already opened shows Maud's door line
