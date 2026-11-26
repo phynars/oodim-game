@@ -36,7 +36,20 @@ export const createAftersignMusicLayer = ({ audioContext, destination }) => {
     start() {
       if (started) return;
       started = true;
+      gain.gain.cancelScheduledValues(audioContext.currentTime);
+      gain.gain.setValueAtTime(muted ? 0 : 0.024, audioContext.currentTime);
       schedule();
+    },
+    // Start fresh returns music to its cold-boot "not started" state, so the
+    // "Enable music" label the reset shows is true: no voice keeps playing.
+    stop() {
+      started = false;
+      muted = false;
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      nextAt = 0;
+      gain.gain.cancelScheduledValues(audioContext.currentTime);
+      gain.gain.setValueAtTime(0, audioContext.currentTime);
     },
     setMuted(value) {
       muted = Boolean(value);

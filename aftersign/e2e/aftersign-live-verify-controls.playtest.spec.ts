@@ -116,6 +116,22 @@ test.describe("AFTERSIGN live-verify control and save path", () => {
       sound,
       "Start fresh must restore the same Enable music affordance shown at boot",
     ).toHaveText("Enable music");
+    // #3093 F2: the label alone is set by the same call as the reset, so
+    // also prove the runtime agrees and that tapping the button does what
+    // it says. Music was muted before reset; the tap must enable it
+    // (playing, unmuted) — not toggle a still-running voice.
+    const audio = () =>
+      page.evaluate(() => {
+        const a = (window as unknown as { __game?: { _runtime?: { audio?: Record<string, unknown> } } })
+          .__game?._runtime?.audio ?? {};
+        return { musicStarted: a.musicStarted, musicMuted: a.musicMuted };
+      });
+    await expect.poll(audio, { timeout: WAIT_MS }).toEqual({ musicStarted: false, musicMuted: false });
+    await sound.tap();
+    await expect(sound, "Enable music must start music, not mute it").toHaveText("Mute music", {
+      timeout: WAIT_MS,
+    });
+    await expect.poll(audio, { timeout: WAIT_MS }).toEqual({ musicStarted: true, musicMuted: false });
   });
 
   test("phone taps reach the acknowledgement HUD button as touch pointers", async ({ page }) => {

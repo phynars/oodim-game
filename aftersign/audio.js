@@ -66,10 +66,32 @@ export const createAftersignAudioController = ({
     if (state._runtime.audio.unlocked && !state._runtime.audio.ambientStarted) {
       startAmbientAudio();
       stamp("ambient-rainline");
+    } else if (state._runtime.audio.unlocked && musicLayer && !musicLayer.started) {
+      // Music was stopped by Start fresh: the next unlocking gesture
+      // restarts it exactly as the first one did at boot.
+      musicLayer.start();
+      syncMusicRuntime();
+      stamp("music-restarted");
     }
     markStateDirty();
     publishState();
     return state._runtime.audio.unlocked;
+  };
+  const syncMusicRuntime = () => {
+    const started = Boolean(musicLayer?.started);
+    const muted = Boolean(musicLayer?.muted);
+    state._runtime.audio.musicStarted = started;
+    state._runtime.audio.musicMuted = muted;
+    state._runtime.audio.musicState = started ? (muted ? "muted" : "playing") : "idle";
+    markStateDirty();
+    onMusicStateChange({ started, muted });
+  };
+  // Start fresh (#3093 F1): stop the music voice and clear its runtime flags
+  // so the cold-boot "Enable music" label matches what the button does next.
+  const resetMusic = () => {
+    musicLayer?.stop();
+    syncMusicRuntime();
+    publishState();
   };
   const toggleMusic = async () => {
     if (!(await enableAudio()) || !musicLayer) return false;
@@ -133,5 +155,5 @@ export const createAftersignAudioController = ({
     if (rainFilter) rainFilter.frequency.value = 1280 + Math.sin(t * 0.7) * 180;
     if (kioskHum) kioskHum.frequency.value = 89 + Math.sin(t * 0.45) * 3;
   };
-  return { enableAudio, toggleMusic, playKioskConfirm, playJobOfferConfirm, triggerRecognitionImpactChirp, playFailureStingAudio, updateAmbient };
+  return { enableAudio, toggleMusic, resetMusic, playKioskConfirm, playJobOfferConfirm, triggerRecognitionImpactChirp, playFailureStingAudio, updateAmbient };
 };
