@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 
+// Served phone reachability regression coverage for #3084.
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 15_000;
 
@@ -39,6 +40,8 @@ async function reachOrraPayback(page: Page): Promise<void> {
   await tapChoice(page, "deliver-packet");
   await waitForBeat(page, "packet-offered");
   await tapVisible(page, '#offeredJobs button[data-offered-job-id="job-night-transfer"]');
+  const deliverPacket = page.getByRole("button", { name: "Deliver packet" });
+  await expect(deliverPacket).toBeInViewport({ ratio: 1 });
   await tapVisible(page, "#packetButton");
   await waitForBeat(page, "packet-choice");
   await tapChoice(page, "acknowledge-kiosk");
@@ -106,9 +109,13 @@ test.describe("Maud Bell Archive endings (#2652)", () => {
 
       const nameButton = page.locator(`button[data-maud-name-choice="${choice}"]`);
       await expect(nameButton).toBeVisible({ timeout: WAIT_MS });
+      await expect(nameButton).toBeInViewport({ ratio: 1 });
       // Phone-first story: a real touch tap, same as orra-payback.playtest.spec.ts.
       await expect(nameButton).toBeEnabled({ timeout: WAIT_MS });
       await nameButton.tap();
+
+      const unlitDoor = page.getByRole("button", { name: "Go to the Unlit Door" });
+      await expect(unlitDoor).toBeInViewport({ ratio: 1 });
 
       // Bell Archive outcome: the scene module stamps matched/unmatched on
       // the scene once the real touch resolves the name against memory.

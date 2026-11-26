@@ -837,8 +837,8 @@ const scrollDialogueToNewestSection = (section) => {
   // Prefer the row of live choices inside the newest section: if the
   // section is taller than the card, its controls are what must show.
   const resolveTarget = () => {
-    const choice = host?.querySelector?.("[data-maud-name-choice]");
-    return choice?.parentElement || host;
+    const control = host?.querySelector?.('button[data-choice-id="open-unlit-door"],button[data-maud-name-choice],button[data-choice-id="deliver-packet"]');
+    return control?.parentElement || host;
   };
   const pin = () => {
     const target = resolveTarget();
@@ -3770,6 +3770,7 @@ offeredJobs.appendChild(__ioConsequenceLineNode);
               /* feel projection must never break state commit */
             }
             jobOfferController.commit();
+            scrollDialogueToNewestSection(deliverButton);
           });
           offeredJobs.appendChild(button);
         }
