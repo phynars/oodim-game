@@ -1816,7 +1816,7 @@ const lineForBeat = () => {
           // them. Bring the last choice into view so both stay visible
           // without a swipe. scrollIntoView scrolls every scrolling ancestor,
           // including the panel.
-          const shortcutChoices = document.querySelectorAll("#nikoThread [data-niko-shortcut-choice]");
+          const shortcutChoices = document.getElementById("nikoThread")?.querySelectorAll("[data-niko-shortcut-choice]") ?? [];
           const lastChoice = shortcutChoices[shortcutChoices.length - 1];
           if (lastChoice && typeof lastChoice.scrollIntoView === "function") {
             lastChoice.scrollIntoView({ block: "nearest", inline: "nearest" });
