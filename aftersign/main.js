@@ -5986,6 +5986,8 @@ const resetSliceSave = async () => {
   resetConfirmationPending = false;
   resetButton.textContent = "Start fresh";
   resetButton.removeAttribute("data-reset-confirmation");
+  // Start fresh returns the visible music affordance to its cold-boot copy.
+  syncMusicButton({ started: false, muted: false });
   window.localStorage.removeItem(storageKey);
   await clearAuthoritativeSave({ slot, playerId: state.player.id });
   packetIntent.reset();

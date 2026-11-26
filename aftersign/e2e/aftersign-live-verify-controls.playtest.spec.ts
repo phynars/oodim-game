@@ -112,6 +112,10 @@ test.describe("AFTERSIGN live-verify control and save path", () => {
       page.locator('[data-beat-id="packet-offered"]'),
       "Start fresh must be tappable — slice-save-controls row needs pointer-events: auto",
     ).toBeVisible({ timeout: WAIT_MS });
+    await expect(
+      sound,
+      "Start fresh must restore the same Enable music affordance shown at boot",
+    ).toHaveText("Enable music");
   });
 
   test("phone taps reach the acknowledgement HUD button as touch pointers", async ({ page }) => {
