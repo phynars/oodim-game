@@ -96,7 +96,15 @@ test.describe("M-CONTINUE played extent", () => {
     const nextPacket = page.locator("#deliverButton");
     await expect(nextPacket).toContainText("Deliver next packet");
     await expect(nextPacket).toHaveAttribute("data-aftersign-choice-kind", "primary");
-    await expect(nextPacket).toHaveCSS("font-weight", "750");
+    // The story-advancing control must be visibly marked apart from the
+    // optional replies: gold border and a heavier weight than every other
+    // button (which all render at 750).
+    await expect(nextPacket).toHaveCSS("border-top-color", "rgb(255, 211, 106)");
+    await expect(nextPacket).toHaveCSS("font-weight", "850");
+    await expect(page.locator("#acknowledgeRouteButton")).not.toHaveCSS(
+      "border-top-color",
+      "rgb(255, 211, 106)",
+    );
     await expect(page.locator("#acknowledgeRouteButton")).toHaveAttribute(
       "aria-description",
       "Optional response; this does not advance the job",

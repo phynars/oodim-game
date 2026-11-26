@@ -746,7 +746,9 @@
       #deliverButton[data-aftersign-choice-kind="primary"] {
         border-color: #ffd36a;
         box-shadow: 0 0 0 3px rgba(255, 211, 106, 0.42);
-        font-weight: 750;
+        /* Every button is already 750; the continuing control must read
+           heavier than the optional replies beside it. */
+        font-weight: 850;
       }
 
       /* #3020: the page scrolls now, so a scrolled-to control keeps a small
