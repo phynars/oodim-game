@@ -78,6 +78,7 @@ export const createPersistHelpers = ({
       doorChoice: state.story?.doorChoice ?? null,
       firstPacketSealed:
         typeof state.story?.firstPacketSealed === "boolean" ? state.story.firstPacketSealed : null,
+      firstPacketInteracted: state.story?.firstPacketInteracted === true,
       episodeTwoNightPost: state.story?.episodeTwoNightPost === true,
       episodeTwoActOneEnded: state.story?.episodeTwoActOneEnded === true,
       episodeTwoAcceptedJobId:
