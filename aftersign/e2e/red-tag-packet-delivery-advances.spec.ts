@@ -100,6 +100,44 @@ test.describe("AFTERSIGN red-tag round-two confirmation (#2829, #2356)", () => {
     await waitForBeat(page, "io-return-recognition");
   });
 
+  // #3068 — the playtest path: tap "I listened" on the blue packet, then at
+  // Io's next job touch the red tag directly (no "Deliver next packet").
+  // Main carried round one's route choice into the red-tag tray, so it
+  // rendered "You listened" before the player touched it on this delivery.
+  test("red tag tapped straight from Io's next job shows no stale You listened", async ({ page }) => {
+    const slot = `red-tag-stale-listen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await waitForReady(page);
+
+    await tap(page, "#packetButton");
+    await waitForBeat(page, "packet-choice");
+    await tap(page, "#acknowledgeRouteButton");
+    await expect(page.locator("#acknowledgeRouteButton")).toHaveText("You listened");
+    await tap(page, "#deliverButton");
+    await expect(page.locator("#deliverButton")).toHaveText("Return to Io");
+    await tap(page, "#deliverButton");
+    await waitForBeat(page, "io-return-recognition");
+    await tap(page, "#deliverButton");
+    await waitForBeat(page, "return-tone-choice");
+    await tap(page, "#deliverButton");
+    await waitForBeat(page, "io-next-job");
+
+    const packetButton = page.locator("#packetButton");
+    await expect(packetButton).toHaveText("Red tag — Saint Orra");
+    await tap(page, "#packetButton");
+    await waitForBeat(page, "packet-choice");
+    await expect(packetButton).toHaveText("Red tag — Saint Orra · seal confirmed");
+    await expect(page.locator("#acknowledgeRouteButton")).toHaveText("I listened");
+    await expect(page.locator("#acknowledgeRouteButton")).not.toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByText("You listened", { exact: true })).toHaveCount(0);
+
+    await tap(page, "#deliverButton");
+    await expect(page.locator("#deliverButton")).toHaveText("Return to Io");
+    await expect(page.getByText("You listened", { exact: true })).toHaveCount(0);
+    await tap(page, "#deliverButton");
+    await waitForBeat(page, "io-return-recognition");
+  });
+
   // #2356 — NON-POINTER activation. Playwright's tap/click dispatch a
   // pointer stream that hits the pointerdown/pointerup funnel in
   // `inputAdapters.js`; only focus() + keyboard Enter on the focused
