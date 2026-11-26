@@ -1235,6 +1235,9 @@ const state = {
     // so the first outcome is recorded once and saved separately.
     firstPacketSealed:
       typeof stored?.story?.firstPacketSealed === "boolean" ? stored.story.firstPacketSealed : null,
+    // A sealed packet is the boot default, not evidence that the player chose
+    // to preserve it. Only a committed packet gesture may authorize seal memory.
+    firstPacketInteracted: stored?.story?.firstPacketInteracted === true,
     episodeTwoNightPost: stored?.story?.episodeTwoNightPost === true,
     episodeTwoActOneEnded: stored?.story?.episodeTwoActOneEnded === true,
     // Episode 2 acceptance is its own durable fact. A delivery id names the
@@ -1810,17 +1813,6 @@ const lineForBeat = () => {
           host.setAttribute("data-continuation", "");
           renderText();
           publishState();
-          // M7 closeout runs 63636847 and 52bb9de5: after Accept nothing
-          // visibly changed. Niko's shortcut choices were rendered below the
-          // bounded `.hud .panel` fold, and the player had to swipe to find
-          // them. Bring the last choice into view so both stay visible
-          // without a swipe. scrollIntoView scrolls every scrolling ancestor,
-          // including the panel.
-          const shortcutChoices = document.getElementById("nikoThread")?.querySelectorAll("[data-niko-shortcut-choice]") ?? [];
-          const lastChoice = shortcutChoices[shortcutChoices.length - 1];
-          if (lastChoice && typeof lastChoice.scrollIntoView === "function") {
-            lastChoice.scrollIntoView({ block: "nearest", inline: "nearest" });
-          }
         });
         jobCard.append(jobName, jobBrief, offer, accept);
         if (!accepted) {
@@ -1962,6 +1954,7 @@ const lineForBeat = () => {
     npcs: state.npcs,
     deliveryId: state.delivery.id,
     redTagAccepted: state.player.redTagAccepted === true,
+    firstPacketInteracted: state.story.firstPacketInteracted === true,
     returningBootLine: ioReturningBootLine,
     returningBootBeat: ioReturningBootBeat,
     secondPacketResponseLine: ioSecondPacketResponseLine,
@@ -2155,8 +2148,8 @@ const syncIoLine = () => {
     const speakAsSealed = breakMode === "wrong-io-line" ? !rememberedSealed : rememberedSealed;
     const selected = selectIoRecognitionDialogue({
       playerId: state.player.id,
-      packetSealed: speakAsSealed,
-      memory: state.npcs.io.memory,
+      packetSealed: state.story.firstPacketInteracted === true ? speakAsSealed : null,
+      memory: state.story.firstPacketInteracted === true ? state.npcs.io.memory : [],
     });
     // Red-tag return keeps its OWN recognition line — do NOT append the
     // red-tag suffix to `selected.line`, because `selected.line` is a
@@ -4121,6 +4114,10 @@ const commitPacketOutcome = (outcome) => {
         : PACKET_INTERACTION_OUTCOME.UNKNOWN,
   });
   if (!interaction.accepted) return;
+  if (!state.packet.delivered && state.story.firstPacketInteracted !== true) {
+    state.story.firstPacketInteracted = true;
+    markStateDirty();
+  }
 
   // An irreversible packet choice needs an immediate screen-level answer.
   // Every DOM write is caller-owned; the extracted module only computes it.
@@ -5844,6 +5841,7 @@ const RECOGNITION_SETTLE_MS = 120;
 // (the same `"sealed" | "opened"` objects offeredJobsMemoryFromIoMemory reads),
 // where any opened delivery means the seal was broken. Unknown → null (no line).
 function firstPacketSealedForIoFinal() {
+  if (state.story.firstPacketInteracted !== true) return null;
   if (typeof state.story.firstPacketSealed === "boolean") return state.story.firstPacketSealed;
   const memory = Array.isArray(state.npcs?.io?.memory) ? state.npcs.io.memory : [];
   if (memory.some((fact) => fact?.object === "opened")) return false;
@@ -5858,7 +5856,7 @@ const deliverPacket = (source = "hud-button") => {
   state.packet.deliveredAt = new Date().toISOString();
   state.delivery.outcome = state.packet.sealed ? "sealed" : "opened";
   // #2878: record the first packet's seal once; later packets never overwrite it.
-  if (typeof state.story.firstPacketSealed !== "boolean") {
+  if (state.story.firstPacketInteracted === true && typeof state.story.firstPacketSealed !== "boolean") {
     state.story.firstPacketSealed = state.packet.sealed === true;
   }
   // #2446 — when the completing delivery is the red-tag one, flip the
@@ -6005,6 +6003,7 @@ const resetSliceSave = async () => {
   // fresh must clear it too, or a replayed ending renders it already chosen.
   state.story.doorChoice = null;
   state.story.firstPacketSealed = null;
+  state.story.firstPacketInteracted = false;
   // PR #2909 F1: Start fresh must leave the Night Post too — otherwise
   // lineForBeat keeps taking the continuation branch and persistence saves
   // episodeTwoNightPost:true again.

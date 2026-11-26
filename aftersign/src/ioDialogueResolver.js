@@ -9,6 +9,7 @@ export const resolveIoDialogue = ({
   npcs,
   deliveryId,
   redTagAccepted,
+  firstPacketInteracted,
   returningBootLine,
   returningBootBeat,
   secondPacketResponseLine,
@@ -27,7 +28,12 @@ export const resolveIoDialogue = ({
   offersMemory,
   redTagReturnAcknowledgement,
 }) => {
-  if (returningBootLine !== null && returningBootBeat !== null && beat === returningBootBeat) {
+  if (
+    firstPacketInteracted === true
+    && returningBootLine !== null
+    && returningBootBeat !== null
+    && beat === returningBootBeat
+  ) {
     return returningBootLine;
   }
   if (beat === "packet-choice") {
@@ -56,13 +62,16 @@ export const resolveIoDialogue = ({
     return [reflection, recall, nextJobPrompt(), acknowledgement].filter(Boolean).join(" ");
   }
   if (beat === "io-return-recognition") {
+    if (firstPacketInteracted !== true) return defaultOfferLine;
     if (deliveryId === "red-tag" && redTagAccepted === true) {
       return redTagReturnAcknowledgement?.(player.selectedJobOfferId)
         ?? "The red tag reached Saint Orra. The route kept its promise, and I kept your name beside it.";
     }
     const contaminated = breakMode === "orra-io-contamination"
       && Array.isArray(npcs.orra?.memory) && npcs.orra.memory.length > 0;
-    const packetSealed = breakMode === "wrong-io-line" || contaminated ? !packet.sealed : packet.sealed;
+    const packetSealed = firstPacketInteracted === true
+      ? (breakMode === "wrong-io-line" || contaminated ? !packet.sealed : packet.sealed)
+      : null;
     return recognitionDialogue({ playerId: player.id, packetSealed, memory: npcs.io.memory }).line;
   }
   if (beat === "packet-offered") {
