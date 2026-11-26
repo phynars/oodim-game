@@ -77,6 +77,17 @@ async function holdReturnToIoThroughAutoAdvance(page: Page, label: string): Prom
   await page.mouse.up();
 }
 
+// Browser-generated mouse drags released off-target do not click the button,
+// so they cannot prove this guard. Dispatch the relevant pointer/click sequence
+// on the visible control: a 300px release followed by its click must be ignored.
+async function dispatchSwipeClickOnReturnToIo(page: Page): Promise<void> {
+  const returnToIo = page.locator('#deliverButton[data-choice-id="return-to-io"]');
+  await expect(returnToIo, '"Return to Io" is offered at packet-delivered').toBeVisible({ timeout: WAIT_MS });
+  await returnToIo.dispatchEvent("pointerdown", { pointerId: 1, clientX: 100, clientY: 400 });
+  await returnToIo.dispatchEvent("pointerup", { pointerId: 1, clientX: 100, clientY: 100 });
+  await returnToIo.dispatchEvent("click", { detail: 1, clientX: 100, clientY: 100 });
+}
+
 async function deliverFromPacketChoice(page: Page): Promise<void> {
   await waitForBeat(page, "packet-choice");
   await tapChoice(page, "acknowledge-kiosk");
@@ -97,6 +108,9 @@ test.describe("AFTERSIGN #2181 — a gesture begun on 'Return to Io' never commi
     await waitForBeat(page, "packet-offered");
     await page.locator("#packetButton").click();
     await deliverFromPacketChoice(page);
+    await dispatchSwipeClickOnReturnToIo(page);
+    const afterSwipe = await snapshot(page);
+    expect(afterSwipe.scene?.beat, "a 300px pointer release and click must not leave Return to Io").toBe("packet-delivered");
     await holdReturnToIoThroughAutoAdvance(page, "round 1");
     const r1 = await snapshot(page);
     expect(r1.scene?.beat, "round 1: still choosing a tone").toBe("io-return-recognition");

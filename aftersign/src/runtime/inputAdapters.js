@@ -301,9 +301,22 @@ export const attachRuntimeInputAdapters = ({
   // reason, and main.js refuses a tone commit whose gesture began before the
   // recognition beat did. Keyboard activation (click.detail === 0) has no
   // pointerdown and stages no time, so this rule never refuses it.
-  const markReturnSurfacePointerDown = () => {
+  const RETURN_SURFACE_TAP_DRIFT_PX = 12;
+  const markReturnSurfacePointerDown = (event) => {
     if (!state || !state.interaction) return;
     state.interaction.returnSurfaceDownAt = performance.now();
+    state.interaction.returnSurfacePointer = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+  };
+
+  const isReturnSurfaceTap = (event) => {
+    const press = state?.interaction?.returnSurfacePointer;
+    if (!press || event.detail === 0) return true;
+    if (press.pointerId !== event.pointerId) return false;
+    return Math.hypot(event.clientX - press.x, event.clientY - press.y) <= RETURN_SURFACE_TAP_DRIFT_PX;
   };
 
   const stagePendingReturnReason = (reason, event) => {
@@ -312,10 +325,14 @@ export const attachRuntimeInputAdapters = ({
     state.interaction.pendingReturnDownAt =
       event && event.detail > 0 && typeof downAt === "number" ? downAt : null;
     state.interaction.returnSurfaceDownAt = null;
+    state.interaction.returnSurfacePointer = null;
   };
 
   for (const button of [acknowledgeRouteButton, skipRouteButton, deliverButton]) {
     button.addEventListener("pointerdown", markReturnSurfacePointerDown, { passive: true });
+    button.addEventListener("pointercancel", () => {
+      state.interaction.returnSurfacePointer = null;
+    }, { passive: true });
   }
 
   const stampRecognitionEntryIfReturnToIo = (choiceId) => {
@@ -330,6 +347,7 @@ export const attachRuntimeInputAdapters = ({
   };
 
   acknowledgeRouteButton.addEventListener("click", (event) => {
+    if (!isReturnSurfaceTap(event)) return;
     const reasonFromAck = readReturnReasonFromTarget(
       acknowledgeRouteButton,
       IO_RETURN_TONE_OPTIONS,
@@ -344,6 +362,7 @@ export const attachRuntimeInputAdapters = ({
   });
 
   skipRouteButton.addEventListener("click", (event) => {
+    if (!isReturnSurfaceTap(event)) return;
     const reasonFromSkip = readReturnReasonFromTarget(
       skipRouteButton,
       IO_RETURN_TONE_OPTIONS,
@@ -358,6 +377,7 @@ export const attachRuntimeInputAdapters = ({
   });
 
   deliverButton.addEventListener("click", (event) => {
+    if (!isReturnSurfaceTap(event)) return;
     const reasonFromDeliver = readReturnReasonFromTarget(
       deliverButton,
       IO_RETURN_TONE_OPTIONS,
