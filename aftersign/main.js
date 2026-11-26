@@ -6405,17 +6405,6 @@ resetButton.addEventListener("click", () => {
 resetButton.addEventListener("blur", clearResetConfirmation);
 window.addEventListener("resize", resize, { passive: true });
 
-// Record every real served-page pointer before its click handler may replace
-// the target. The render loop closes these intents only after composer.render,
-// so the report measures the input-to-visible boundary rather than a handler.
-document.addEventListener("pointerdown", (event) => {
-  if (typeof event.pointerId !== "number") return;
-  markPointerIntent({
-    pointerId: event.pointerId,
-    pointerAtMs: performance.now(),
-  });
-}, { capture: true, passive: true });
-
 // Background-open guard listener: fire an immediate hasFocus:false tick
 // the moment the tab is hidden so the packet-intent controller freezes
 // the hold in-flight, rather than waiting for the next rAF (which may
