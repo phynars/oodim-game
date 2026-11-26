@@ -1729,6 +1729,14 @@ const lineForBeat = () => {
         doc: document,
         ending: episodeTwoActOne.ending,
         actTwoOpening: episodeTwoActOne.actTwoOpening,
+        onUnaddressedChildAnswer: async (answerId) => {
+          if (state.story.unaddressedChildAnswer) return;
+          state.story.unaddressedChildAnswer = answerId;
+          markStateDirty();
+          await persistAuthoritative({ dirty: true });
+          renderText();
+          publishState();
+        },
       });
       scrollDialogueToNewestSection(document.getElementById("episodeOneEnding"));
     }
@@ -1739,19 +1747,7 @@ const lineForBeat = () => {
     if (typeof document !== "undefined") {
       renderEpisodeTwoActOneOrchestration({
         doc: document,
-        ending: {
-          ...episodeTwoActOne.ending,
-          // #3055: the Unaddressed Child asks on the Act I ending card.
-          // The tapped answer is saved separately from Niko's take/refuse;
-          // the next frame rebuilds the card naming the exact answer.
-          onUnaddressedChildAnswer: async (answerId) => {
-            if (state.story.unaddressedChildAnswer) return;
-            state.story.unaddressedChildAnswer = answerId;
-            markStateDirty();
-            await persistAuthoritative({ dirty: true });
-            publishState();
-          },
-        },
+        ending: episodeTwoActOne.ending,
         onContinueToActTwo: () => {
           advanceToActTwoOpening();
         },

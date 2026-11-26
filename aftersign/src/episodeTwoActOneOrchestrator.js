@@ -34,11 +34,11 @@ export const resolveEpisodeTwoActOneOrchestration = ({ beat, story, delivery } =
  * stays out of beat / persistence ownership.
  */
 export const renderEpisodeTwoActOneOrchestration = (
-  { doc, ending, actTwoOpening, onContinueToActTwo, onRendered } = {},
+  { doc, ending, actTwoOpening, onContinueToActTwo, onUnaddressedChildAnswer, onRendered } = {},
 ) => {
   if (!doc) return null;
   if (actTwoOpening) {
-    const opening = renderEpisodeTwoActTwoOpening(doc, actTwoOpening);
+    const opening = renderEpisodeTwoActTwoOpening(doc, actTwoOpening, onUnaddressedChildAnswer);
     if (opening) onRendered?.();
     return opening;
   }
