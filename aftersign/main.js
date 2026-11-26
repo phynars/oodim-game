@@ -1810,6 +1810,17 @@ const lineForBeat = () => {
           host.setAttribute("data-continuation", "");
           renderText();
           publishState();
+          // M7 closeout runs 63636847 and 52bb9de5: after Accept nothing
+          // visibly changed. Niko's shortcut choices were rendered below the
+          // bounded `.hud .panel` fold, and the player had to swipe to find
+          // them. Bring the last choice into view so both stay visible
+          // without a swipe. scrollIntoView scrolls every scrolling ancestor,
+          // including the panel.
+          const shortcutChoices = document.querySelectorAll("#nikoThread [data-niko-shortcut-choice]");
+          const lastChoice = shortcutChoices[shortcutChoices.length - 1];
+          if (lastChoice && typeof lastChoice.scrollIntoView === "function") {
+            lastChoice.scrollIntoView({ block: "nearest", inline: "nearest" });
+          }
         });
         jobCard.append(jobName, jobBrief, offer, accept);
         if (!accepted) {

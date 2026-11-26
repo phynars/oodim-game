@@ -28,6 +28,18 @@ test.describe("Episode 2 accepted job shortcut choices (#3049)", () => {
     await expect(choices.nth(1)).toBeEnabled();
   });
 
+  test("tapping Accept brings both shortcut choices into the 390x844 viewport without a swipe", async ({ page }) => {
+    // M7 closeout runs 63636847 and 52bb9de5: after Accept The Ledger Run,
+    // nothing visibly changed until the player swiped.
+    test.setTimeout(240_000);
+    await openNightPost(page, "accept-reveals-shortcuts");
+    await page.locator("#acceptEpisodeTwoJob:not([disabled])").tap();
+    const choices = page.locator("button[data-niko-shortcut-choice]");
+    await expect(choices).toHaveCount(2);
+    await expect(choices.nth(0)).toBeInViewport({ ratio: 1, timeout: WAIT });
+    await expect(choices.nth(1)).toBeInViewport({ ratio: 1, timeout: WAIT });
+  });
+
   test("tapping a shortcut selects only the tapped action", async ({ page }) => {
     test.setTimeout(240_000);
     await openNightPost(page, "single-selection");
