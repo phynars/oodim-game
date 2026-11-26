@@ -837,7 +837,10 @@ const scrollDialogueToNewestSection = (section) => {
   // Prefer the row of live choices inside the newest section: if the
   // section is taller than the card, its controls are what must show.
   const resolveTarget = () => {
-    const control = host?.querySelector?.('button[data-choice-id="open-unlit-door"],button[data-maud-name-choice],button[data-choice-id="deliver-packet"]');
+    // Do not keep route-specific control names here. The final enabled button
+    // in the rendered section is the scroll anchor for its current content.
+    const controls = host?.querySelectorAll?.("button:not([disabled])");
+    const control = controls?.[controls.length - 1];
     return control?.parentElement || host;
   };
   const pin = () => {

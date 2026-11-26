@@ -227,6 +227,14 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       await expect(maud).toContainText(MAUD_TITLE);
       await expect(maud).toContainText(MAUD_PROMPT);
       const nameButton = page.locator(`button[data-maud-name-choice="${scenario.maudChoice}"]`);
+      // Carrying the name reveals this row. It must be tappable without a
+      // manual phone swipe, not merely present in the DOM.
+      await expect
+        .poll(async () => {
+          const bounds = await nameButton.boundingBox();
+          return !!bounds && bounds.y >= 0 && bounds.y + bounds.height <= PHONE_VIEWPORT.height;
+        }, { message: "revealed Bell Archive name choice is fully inside the phone viewport", timeout: WAIT_MS })
+        .toBe(true);
       const tappedName = await nameButton.textContent();
       await nameButton.tap();
 
