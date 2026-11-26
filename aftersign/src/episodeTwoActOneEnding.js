@@ -12,6 +12,11 @@ const UNADDRESSED_CHILD_ANSWER_COPY = Object.freeze({
   "i-know-where-to-begin": "I know where to begin.",
 });
 
+const UNADDRESSED_CHILD_RESPONSE_COPY = Object.freeze({
+  "i-dont-know": "Unaddressed Child: Then we begin by listening together.",
+  "i-know-where-to-begin": "Unaddressed Child: Then show me the first door.",
+});
+
 export const resolveEpisodeTwoActOneEnding = ({ story, delivery } = {}) => {
   const job = episodeTwoJobForStory(story);
   const answer = story?.nikoShortcutAnswer;
@@ -83,13 +88,16 @@ export const renderEpisodeTwoActTwoOpening = (doc, opening, onUnaddressedChildAn
   const child = doc.createElement("div");
   child.setAttribute("data-npc", "unaddressed-child");
   if (childAnswer) {
+    const response = doc.createElement("p");
+    response.setAttribute("data-unaddressed-child-response", "true");
+    response.textContent = UNADDRESSED_CHILD_RESPONSE_COPY[childAnswer];
     const endCard = doc.createElement("p");
     endCard.setAttribute("data-act-two-end-card", "true");
     endCard.textContent = `Act II complete. Shortcut answer: ${opening.answer}. Unaddressed Child: Where do you begin? Your answer: ${UNADDRESSED_CHILD_ANSWER_COPY[childAnswer]}`;
     const continuation = doc.createElement("p");
     continuation.setAttribute("data-act-two-continuation", "to-be-continued");
     continuation.textContent = "To be continued.";
-    child.append(endCard, continuation);
+    child.append(response, endCard, continuation);
   } else {
     const question = doc.createElement("p");
     question.textContent = "Unaddressed Child: Where do you begin?";
