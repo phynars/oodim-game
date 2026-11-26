@@ -4153,6 +4153,14 @@ const commitPacketOutcome = (outcome) => {
     markStateDirty();
   }
   state.interaction.lastAction = interaction.choiceId;
+  // #3068: a packet tap at io-next-job starts the round-two red-tag fork
+  // without passing through `deliver-packet`, which is where the route
+  // choice is otherwise reset. Clear it here as well, or the earlier
+  // packet's "I listened" renders as "You listened" on the red-tag tray.
+  if (state.scene.beat === "io-next-job" && state.player.secondAction !== null) {
+    state.player.secondAction = null;
+    markStateDirty();
+  }
   setBeat("packet-choice");
 };
 
@@ -5912,7 +5920,15 @@ const deliverPacket = (source = "hud-button") => {
     if (!state.interaction || typeof state.interaction !== "object") {
       state.interaction = {};
     }
-    state.interaction.recognitionEnteredAt = performance.now();
+    // #3068: "Return to Io" is a real tap target at packet-delivered. When
+    // the player taps it before this timer fires, `advance()` has already
+    // moved on (often to a tone choice by now); promoting the beat here
+    // again would snap the screen back to Io's recall. Still publish the
+    // memory beat below, but only advance from `packet-delivered`.
+    const stillAtDelivery = state.scene.beat === "packet-delivered";
+    if (stillAtDelivery) {
+      state.interaction.recognitionEnteredAt = performance.now();
+    }
     const beatEndedAt = performance.now();
     const durableOutcome = state.npcs.io.memory.find((fact) => fact.kind === "delivery-outcome")?.object === "opened" ? "opened" : "sealed";
     const secondAction = secondActionFromMemory(state.npcs.io.memory);
@@ -5940,7 +5956,11 @@ const deliverPacket = (source = "hud-button") => {
         : "io_return_packet_opened",
     };
     markStateDirty();
-    setBeat("io-return-recognition");
+    if (stillAtDelivery) {
+      setBeat("io-return-recognition");
+    } else {
+      publishState();
+    }
     // #2336: the only durable write on this path used to be the
     // persistAuthoritative() below, which fires at `packet-delivered`
     // BEFORE this 1180ms auto-advance. A reload while Io was already
