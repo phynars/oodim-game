@@ -739,6 +739,18 @@
         pointer-events: auto;
       }
 
+      /* At Io's next-job beat, optional replies and the vigil tray share the
+         screen with the single control that continues the packet loop. Make
+         that existing primary designation readable before a player scans the
+         unrelated branches. */
+      #deliverButton[data-aftersign-choice-kind="primary"] {
+        border-color: #ffd36a;
+        box-shadow: 0 0 0 3px rgba(255, 211, 106, 0.42);
+        /* Every button is already 750; the continuing control must read
+           heavier than the optional replies beside it. */
+        font-weight: 850;
+      }
+
       /* #3020: the page scrolls now, so a scrolled-to control keeps a small
          gap above the phone bottom instead of landing on a sub-pixel edge. */
       .hud button {
