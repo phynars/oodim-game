@@ -104,6 +104,7 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await page.locator("#beginEpisodeTwo").tap();
     await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toBeVisible({ timeout: WAIT_MS });
     await expect(page.locator("#episodeOneEnding")).toContainText("Night Post");
+    await expect(page.locator("#line")).toHaveText("Night Post. I remember the door you chose: Keep the official record.");
     const accept = page.locator("#acceptEpisodeTwoJob");
     await expect(accept).toHaveText(/Accept The Ledger Run/);
     await expectUnclippedInPanel(page, page.getByText("Night Post", { exact: true }));
@@ -152,6 +153,9 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await expect(page.locator("#beginEpisodeTwo")).toHaveCount(0);
   });
 
+  // Regression coverage for the extracted Night Post beat orchestration:
+  // each player action below is a visible pointer tap, and reload proves the
+  // helper's persistence callback still reaches the durable-save seam.
   test("accepting the visible Night Post offer persists its delivery id", async ({ page }) => {
     test.setTimeout(TEST_TIMEOUT);
     await page.goto(`/aftersign/?slot=${slotFor("accept")}`, { waitUntil: "load" });

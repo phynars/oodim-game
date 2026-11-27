@@ -17,6 +17,7 @@ import {
 } from "./src/episodeTwoActOneOrchestrator.js";
 import { NIKO_SHORTCUT_CHOICES } from "./src/nikoThread.js";
 import { renderNightPost } from "./src/nightPostRenderer.js";
+import { runNightPostBeat } from "./src/runtime/nightPostBeat.js";
 import { createCameraController } from "./src/presentation/cameraController.js";
 import { createDialogueController } from "./src/presentation/dialogueController.js";
 import { createMobileInputController } from "./src/presentation/mobileInputController.js";
@@ -1768,46 +1769,19 @@ const lineForBeat = () => {
     state.npcs.io.lastLine = "";
     return "";
   }
-  if (state.story.episodeTwoNightPost) {
-    const host = typeof document !== "undefined" ? document.getElementById("episodeOneEnding") : null;
-    if (host) {
-      renderNightPost({
-        doc: document,
-        host,
-        doorChoice: state.story.doorChoice,
-        doorLabel: NIGHT_POST_DOOR_LABELS[state.story.doorChoice],
-        job: episodeTwoActOne.job,
-        acceptedJobId: state.story.episodeTwoAcceptedJobId,
-        nikoShortcutAnswer: state.story.nikoShortcutAnswer,
-        routeRisk: state.player.routeRisk,
-        routeRiskDeliveryId: state.player.routeRiskDeliveryId,
-        onAcceptJob: async (job) => {
-          state.delivery.id = job.deliveryId;
-          state.story.episodeTwoAcceptedJobId = job.id;
-          markStateDirty();
-          await persistAuthoritative({ dirty: true });
-          host.setAttribute("data-continuation", "");
-          renderText();
-          publishState();
-        },
-        onChooseShortcut: async (answerId) => {
-          if (state.story.nikoShortcutAnswer) return;
-          state.story.nikoShortcutAnswer = answerId;
-          state.story.episodeTwoActOneEnded = true;
-          markStateDirty();
-          await persistAuthoritative({ dirty: true });
-          host.setAttribute("data-continuation", "");
-          renderText();
-          publishState();
-        },
-      });
-      // #2935: pin the Night Post into the bounded HUD panel so phone players
-      // can tap its visible controls without manually scrolling.
-      scrollDialogueToNewestSection(host);
-    }
-    state.npcs.io.lastLine = `Night Post. I remember the door you chose: ${NIGHT_POST_DOOR_LABELS[state.story.doorChoice] ?? ""}.`;
-    return state.npcs.io.lastLine;
-  }
+  const nightPostLine = runNightPostBeat({
+    document: typeof document !== "undefined" ? document : undefined,
+    state,
+    renderNightPost,
+    nightPostDoorLabels: NIGHT_POST_DOOR_LABELS,
+    job: episodeTwoActOne.job,
+    markStateDirty,
+    persistAuthoritative,
+    renderText,
+    publishState,
+    scrollDialogueToNewestSection,
+  });
+  if (nightPostLine !== null) return nightPostLine;
   // Ending cards remain DOM-owned composition concerns.
   if (state.story.maudBellArchiveEndingId) {
     if (
