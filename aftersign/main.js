@@ -3272,6 +3272,10 @@ const renderText = () => {
       && !state.story.endingId;
     if (vigilChoice.dataset.visible !== String(vigilVisible)) {
       vigilChoice.dataset.visible = String(vigilVisible);
+      // #3098: the tray is a reveal. Bring its controls into view on the
+      // hidden→visible edge only, so a later render never pulls a player
+      // who has scrolled by hand.
+      if (vigilVisible) scrollDialogueToNewestSection(vigilChoice);
     }
   }
 
