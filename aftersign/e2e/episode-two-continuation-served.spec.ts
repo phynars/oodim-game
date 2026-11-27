@@ -1,10 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
+import { playRoute } from "./helpers/route";
+import { doorChoices } from "./helpers/routes";
 
 // Episode 2 continuation: after the Unlit Door choice the Act II end card
 // offers "Begin Episode 2", which enters the Night Post and survives reload.
-// Taps only at 390×844; the route to the end card mirrors
-// durable-act-ii-ending.spec.ts (job offer → sealed packet → Orra payback
-// via button[data-orra-payback-action] → Maud name → Unlit Door).
+// Taps only at 390×844; the route to the Unlit Door is helpers/routes.ts
+// doorChoices (job offer → sealed packet → Orra payback → Maud name).
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 15_000;
@@ -24,31 +25,13 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
   await tapVisible(page, `button[data-choice-id="${choiceId}"]:not([disabled])`);
 }
 
-async function runToEnding(page: Page, doorChoice = "keep-official-record"): Promise<void> {
-  await waitForBeat(page, "packet-offered");
-  await tapVisible(page, '#offeredJobs button[data-offered-job-id="job-safe-delivery"]');
-  await tapVisible(page, "#packetButton");
-  await waitForBeat(page, "packet-choice");
-  await tapChoice(page, "acknowledge-kiosk");
-  await tapChoice(page, "deliver-packet");
-  await waitForBeat(page, "io-return-recognition");
-  await tapVisible(page, 'button[data-return-reason="kind"]:not([disabled])');
-  await waitForBeat(page, "return-tone-choice");
-  await tapChoice(page, "ask-for-next-job");
-  await waitForBeat(page, "io-next-job");
-  await tapChoice(page, "accept-second-packet");
-  await tapChoice(page, "deliver-packet");
-  await waitForBeat(page, "packet-offered");
-  await tapVisible(page, '#offeredJobs button[data-offered-job-id="job-night-transfer"]');
-  await tapVisible(page, "#packetButton");
-  await waitForBeat(page, "packet-choice");
-  await tapChoice(page, "acknowledge-kiosk");
-  await tapChoice(page, "deliver-packet");
-  await waitForBeat(page, "io-return-recognition");
-  await tapVisible(page, 'button[data-orra-payback-action="carry-name-to-bell-archive"]:not([disabled])');
-  await tapVisible(page, 'button[data-maud-name-choice="remembered-name"]');
+// Opens a fresh player and slot at the Unlit Door (kind return, remembered
+// name; played in CI and on the served replay, seeded in the box), then taps
+// the door choice here, so the Begin Episode 2 reveal is always played.
+async function runToEnding(page: Page, tag: string, doorChoice = "keep-official-record"): Promise<void> {
+  const slot = slotFor(tag);
+  await playRoute(page, `/aftersign/?slot=${slot}&player=e2e-${slot.slice(-6)}`, doorChoices("kind", "remembered-name"));
   await expect(page.locator('[data-ending-id="maud-bell-archive-lit"]')).toBeVisible({ timeout: WAIT_MS });
-  await tapChoice(page, "open-unlit-door");
   await tapChoice(page, doorChoice);
   await expect(page.locator("#beginEpisodeTwo")).toBeVisible({ timeout: WAIT_MS });
 }
@@ -83,8 +66,7 @@ test.describe("Episode 2 continuation — served phone flow", () => {
 
   test("shows a tap-reachable Begin Episode 2 control on the phone end screen", async ({ page }) => {
     test.setTimeout(TEST_TIMEOUT);
-    await page.goto(`/aftersign/?slot=${slotFor("control")}`, { waitUntil: "load" });
-    await runToEnding(page);
+    await runToEnding(page, "control");
     const heading = page.getByRole("heading", { name: "End of Episode 1" });
     const begin = page.locator("#beginEpisodeTwo");
     await expect(heading).toHaveText("End of Episode 1");
@@ -99,8 +81,7 @@ test.describe("Episode 2 continuation — served phone flow", () => {
 
   test("enters the Night Post after tapping Begin Episode 2", async ({ page }) => {
     test.setTimeout(TEST_TIMEOUT);
-    await page.goto(`/aftersign/?slot=${slotFor("enter")}`, { waitUntil: "load" });
-    await runToEnding(page);
+    await runToEnding(page, "enter");
     await page.locator("#beginEpisodeTwo").tap();
     await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toBeVisible({ timeout: WAIT_MS });
     await expect(page.locator("#episodeOneEnding")).toContainText("Night Post");
@@ -131,8 +112,7 @@ test.describe("Episode 2 continuation — served phone flow", () => {
 
   test("names only the visibly selected Unlit Door choice at the Night Post", async ({ page }) => {
     test.setTimeout(TEST_TIMEOUT);
-    await page.goto(`/aftersign/?slot=${slotFor("choice")}`, { waitUntil: "load" });
-    await runToEnding(page);
+    await runToEnding(page, "choice");
     await page.locator("#beginEpisodeTwo").tap();
     const nightPost = page.locator('#episodeOneEnding[data-continuation="night-post"]');
     await expect(nightPost).toBeVisible({ timeout: WAIT_MS });
@@ -143,8 +123,7 @@ test.describe("Episode 2 continuation — served phone flow", () => {
 
   test("restores the Night Post continuation after reload", async ({ page }) => {
     test.setTimeout(TEST_TIMEOUT);
-    await page.goto(`/aftersign/?slot=${slotFor("reload")}`, { waitUntil: "load" });
-    await runToEnding(page);
+    await runToEnding(page, "reload");
     await page.locator("#beginEpisodeTwo").tap();
     await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toBeVisible({ timeout: WAIT_MS });
     await page.reload({ waitUntil: "load" });
@@ -158,8 +137,7 @@ test.describe("Episode 2 continuation — served phone flow", () => {
   // helper's persistence callback still reaches the durable-save seam.
   test("accepting the visible Night Post offer persists its delivery id", async ({ page }) => {
     test.setTimeout(TEST_TIMEOUT);
-    await page.goto(`/aftersign/?slot=${slotFor("accept")}`, { waitUntil: "load" });
-    await runToEnding(page);
+    await runToEnding(page, "accept");
     await page.locator("#beginEpisodeTwo").tap();
     const accept = page.locator("#acceptEpisodeTwoJob");
     await expect(accept).toBeVisible({ timeout: WAIT_MS });
@@ -179,8 +157,7 @@ test.describe("Episode 2 continuation — served phone flow", () => {
 
   test("Start fresh from the Night Post leaves it and stays left after reload", async ({ page }) => {
     test.setTimeout(TEST_TIMEOUT);
-    await page.goto(`/aftersign/?slot=${slotFor("reset")}`, { waitUntil: "load" });
-    await runToEnding(page);
+    await runToEnding(page, "reset");
     await page.locator("#beginEpisodeTwo").tap();
     await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toBeVisible({ timeout: WAIT_MS });
     // First tap arms the confirmation; the second visible pointer tap resets.
@@ -219,8 +196,7 @@ test.describe("Episode 2 continuation — served phone flow", () => {
   ] as const) {
     test(`serves the ${jobId} job after a visible ${doorChoice} tap`, async ({ page }) => {
       test.setTimeout(TEST_TIMEOUT);
-      await page.goto(`/aftersign/?slot=${slotFor(`job-${doorChoice}`)}`, { waitUntil: "load" });
-      await runToEnding(page, doorChoice);
+      await runToEnding(page, `job-${doorChoice}`, doorChoice);
       await page.locator("#beginEpisodeTwo").tap();
       const job = page.locator(`#episodeTwoJob[data-episode-two-job-id="${jobId}"]`);
       await expect(job).toBeVisible({ timeout: WAIT_MS });

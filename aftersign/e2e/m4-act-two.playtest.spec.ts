@@ -1,4 +1,6 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
+import { playRoute } from "./helpers/route";
+import { nextJob } from "./helpers/routes";
 
 // M4 PLAYTEST gate (#2705): taps-only, phone viewport, served page.
 // #3002: also verifies the focused Unlit Door card after its visible tap.
@@ -128,18 +130,10 @@ async function openFreshContext(browser: Browser, slot: string, playerId: string
 }
 
 // Boot → first delivery → Io's next-job beat, by taps only.
-async function reachNextJob(page: Page): Promise<void> {
-  await waitForBeat(page, "packet-offered");
-  await tapVisible(page, '#offeredJobs button[data-offered-job-id="job-safe-delivery"]');
-  await tapVisible(page, "#packetButton");
-  await waitForBeat(page, "packet-choice");
-  await tapChoice(page, "acknowledge-kiosk");
-  await tapChoice(page, "deliver-packet");
-  await waitForBeat(page, "io-return-recognition");
-  await tapVisible(page, 'button[data-return-reason="blunt"]:not([disabled])');
-  await waitForBeat(page, "return-tone-choice");
-  await tapChoice(page, "ask-for-next-job");
-  await waitForBeat(page, "io-next-job");
+// Opens the URL at Io's next-job offer after a blunt first return (played in
+// CI and on the served replay, seeded in the box).
+async function reachNextJob(page: Page, url: string): Promise<void> {
+  await playRoute(page, url, nextJob("blunt"));
 }
 
 const CASES = [
@@ -190,9 +184,7 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
     const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const slot = `m4-2804-skip-${runId}`;
     const playerId = `e2e-m4-2804-skip-${runId}`;
-    await page.goto(slotUrl(slot, playerId), { waitUntil: "load" });
-
-    await reachNextJob(page);
+    await reachNextJob(page, slotUrl(slot, playerId));
     await tapChoice(page, "deliver-packet");
     await waitForBeat(page, "packet-offered");
     await tapVisible(page, '#offeredJobs button[data-offered-job-id="job-night-transfer"]');
@@ -213,9 +205,7 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const slot = `m4-recall-${scenario.label}-${runId}`;
       const playerId = `e2e-m4-recall-${scenario.label}-${runId}`;
-      await page.goto(slotUrl(slot, playerId), { waitUntil: "load" });
-
-      await reachNextJob(page);
+      await reachNextJob(page, slotUrl(slot, playerId));
       // The path's real first tap on Io's red-tag offer.
       await tapChoice(page, scenario.firstTap);
       // The vigil tray renders at io-next-job; either vigil tap commits Episode 1.
@@ -325,9 +315,7 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const slot = `m4-bell-${scenario.label}-${runId}`;
       const playerId = `e2e-m4-bell-${scenario.label}-${runId}`;
-      await page.goto(slotUrl(slot, playerId), { waitUntil: "load" });
-
-      await reachNextJob(page);
+      await reachNextJob(page, slotUrl(slot, playerId));
       await tapChoice(page, "accept-second-packet");
       await tapChoice(page, "deliver-packet");
       await waitForBeat(page, "packet-offered");
