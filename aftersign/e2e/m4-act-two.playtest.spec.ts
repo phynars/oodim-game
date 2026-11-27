@@ -146,6 +146,7 @@ const CASES = [
   {
     label: "A",
     firstTap: "accept-second-packet",
+    vigil: "light-vigil",
     recall: RECALL_TAKE,
     otherRecall: RECALL_ASK,
     episodeOneEndingId: "ending-bell-true",
@@ -161,6 +162,9 @@ const CASES = [
   {
     label: "B",
     firstTap: "ask-what-changed",
+    // #3100: lighting the vigil accepts the red tag (light stays on), so the
+    // light-out record is reached by sparing the vigil instead.
+    vigil: "spare-vigil",
     recall: RECALL_ASK,
     otherRecall: RECALL_TAKE,
     episodeOneEndingId: "ending-light-out",
@@ -214,8 +218,8 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       await reachNextJob(page);
       // The path's real first tap on Io's red-tag offer.
       await tapChoice(page, scenario.firstTap);
-      // The vigil tray renders at io-next-job; light-vigil commits Episode 1.
-      await tapChoice(page, "light-vigil");
+      // The vigil tray renders at io-next-job; either vigil tap commits Episode 1.
+      await tapChoice(page, scenario.vigil);
 
       const card = page.locator("#episodeOneEnding [data-ending-id]").first();
       await expect(card).toBeVisible({ timeout: WAIT_MS });
