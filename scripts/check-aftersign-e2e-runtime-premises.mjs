@@ -2,13 +2,13 @@
 // Validates explicit runtime assumptions in AFTERSIGN browser specs.
 // Write annotations as: @runtime-premise owner: aftersign/main.js:123 — observed state
 
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const E2E_ROOT = 'aftersign/e2e';
 const SPEC_SUFFIX = /\.spec\.(?:[cm]?[jt]s|tsx?)$/i;
-const ANNOTATION = /@runtime-premise\s+owner:\s*([^\s]+)(?:\s*[—-]\s*.+)?\s*$/i;
+const ANNOTATION = /@runtime-premise\s+owner:\s*([^\s]+)\s*[—-]\s*(\S.+)\s*$/i;
 const OWNER = /^(aftersign\/(?:src\/)?[\w./-]+\.(?:[cm]?[jt]s|tsx?|html|css)):(\d+)$/i;
 
 function specFiles(root = E2E_ROOT) {
@@ -22,7 +22,15 @@ export function findRuntimePremiseViolations(source, file = '<source>') {
     if (!line.includes('@runtime-premise')) return [];
     const match = line.match(ANNOTATION);
     if (!match || !OWNER.test(match[1])) {
-      return [`${file}:${index + 1}: runtime premise needs 'owner: aftersign/<source>:<line>'`];
+      return [`${file}:${index + 1}: runtime premise needs 'owner: aftersign/<source>:<line> — observed state'`];
+    }
+    const [, owner, lineNumber] = match[1].match(OWNER);
+    if (!existsSync(owner)) {
+      return [`${file}:${index + 1}: runtime premise owner does not exist: ${owner}`];
+    }
+    const ownerSource = readFileSync(owner, 'utf8');
+    if (Number(lineNumber) > ownerSource.split(/\r?\n/).length) {
+      return [`${file}:${index + 1}: runtime premise owner line ${lineNumber} is outside ${owner}`];
     }
     return [];
   });
