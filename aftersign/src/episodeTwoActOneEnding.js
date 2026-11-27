@@ -96,8 +96,18 @@ export const renderEpisodeTwoActTwoOpening = (doc, opening, onUnaddressedChildAn
     endCard.textContent = `Act II complete. Shortcut answer: ${opening.answer}. Unaddressed Child: Where do you begin? Your answer: ${UNADDRESSED_CHILD_ANSWER_COPY[childAnswer]}`;
     const continuation = doc.createElement("p");
     continuation.setAttribute("data-act-two-continuation", "to-be-continued");
-    continuation.textContent = "To be continued.";
-    child.append(response, endCard, continuation);
+    continuation.textContent = "To be continued — this chapter is complete.";
+    const review = doc.createElement("button");
+    review.type = "button";
+    review.textContent = "Review this chapter";
+    review.setAttribute("data-act-two-continuation", "review-chapter");
+    review.style.pointerEvents = "auto";
+    review.style.minHeight = "44px";
+    review.addEventListener("click", () => {
+      review.textContent = `Chapter review: Shortcut answer: ${opening.answer}. Your answer: ${UNADDRESSED_CHILD_ANSWER_COPY[childAnswer]}`;
+      review.setAttribute("aria-pressed", "true");
+    });
+    child.append(response, endCard, continuation, review);
   } else {
     const question = doc.createElement("p");
     question.textContent = "Unaddressed Child: Where do you begin?";

@@ -46,7 +46,10 @@ test.describe("Act I end-card Act II continuation (#3054)", () => {
           ? "Then show me the first door."
           : "Then we begin by listening together.",
       );
-      await expect(opening.locator('[data-act-two-continuation="to-be-continued"]')).toHaveText("To be continued.");
+      await expect(opening.locator('[data-act-two-continuation="to-be-continued"]')).toHaveText("To be continued — this chapter is complete.");
+      const review = opening.getByRole("button", { name: "Review this chapter" });
+      await tapVisible(page, review);
+      await expect(opening.getByRole("button", { name: `Chapter review: Shortcut answer: ${answer}. Your answer: ${selectedAnswerCopy}` })).toBeVisible({ timeout: WAIT });
       const endCard = opening.locator('[data-act-two-end-card="true"]');
       await expect(endCard).toContainText(`Shortcut answer: ${answer}`);
       await expect(endCard).toContainText("Where do you begin?");
