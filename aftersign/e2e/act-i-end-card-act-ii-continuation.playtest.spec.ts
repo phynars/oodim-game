@@ -31,6 +31,7 @@ test.describe("Act I end-card Act II continuation (#3054)", () => {
       const opening = page.locator(`[data-act-two-opening-id="episode-two-act-two-${answer}-opening"]`);
       await expect(opening).toBeVisible({ timeout: WAIT });
       await expect(opening).toContainText("Act II");
+      await expectVisibleInViewport(page, opening);
       const uncertainAnswer = opening.getByRole("button", { name: "I don't know." });
       const confidentAnswer = opening.getByRole("button", { name: /I know where to begin/ });
       await expect(uncertainAnswer).toBeVisible({ timeout: WAIT });
