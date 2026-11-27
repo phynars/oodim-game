@@ -14,11 +14,10 @@
 // (Deploy staging is auto-derived from dist-*/ in deploy.yml, so it needs no
 //  per-product entry — that's why it isn't checked here.)
 
-import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { check as checkSourceConsumption } from "./check-source-consumption.mjs";
+import { check as checkSourceConsumption, defaultBaseRef, resolveBaseCommit } from "./check-source-consumption.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (p) => readFileSync(path.join(repoRoot, p), "utf8");
@@ -82,10 +81,10 @@ if (!architecture.includes("docs/flagship/BRIEF.md")) {
   errors.push(architecturePath + " must point contributors to docs/flagship/BRIEF.md as canonical source");
 }
 
-const sourceConsumptionBase = process.env.SOURCE_CONSUMPTION_BASE ?? "origin/main";
+const sourceConsumptionBase = defaultBaseRef();
 if (existsSync(path.join(repoRoot, ".git"))) {
   try {
-    const baseCommit = execFileSync("git", ["merge-base", sourceConsumptionBase, "HEAD"], { cwd: repoRoot, encoding: "utf8" }).trim();
+    const baseCommit = resolveBaseCommit(repoRoot, sourceConsumptionBase);
     for (const file of checkSourceConsumption(repoRoot, baseCommit)) {
       errors.push(`${file} is added but has no production consumer — import/require it from non-test source or register its path in a package script`);
     }
@@ -95,7 +94,7 @@ if (existsSync(path.join(repoRoot, ".git"))) {
 }
 
 if (errors.length) {
-  console.error("FAIL product-wiring guard (" + products.length + " products: " + products.join(", ") + "):" );
+  console.error("FAIL product-wiring guard (" + products.length + " products: " + products.join(", ") + "):");
   for (const e of errors) console.error("  - " + e);
   console.error("\nA new product must be wired into package.json (per-game + aggregate scripts) and ci.yml (filter + lane). Deploy staging auto-derives from dist-*/, so it needs no manual entry. See docs onboarding-a-repo.md.");
   process.exit(1);

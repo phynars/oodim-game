@@ -33,9 +33,30 @@ export function unconsumedModules({ added, consumers, packageScripts = [] }) {
   return added.filter(isSourceModule).filter((modulePath) => !consumers.some((consumer) => isSourceModule(consumer.path) && referencesModule(consumer, modulePath)) && !packageScripts.some((script) => script.includes(modulePath)));
 }
 
-export function addedModules(repoRoot, baseRef) {
-  const range = `${baseRef}...HEAD`;
-  return execFileSync("git", ["diff", "--name-only", "--diff-filter=A", range], { cwd: repoRoot, encoding: "utf8" })
+const git = (repoRoot, args) => execFileSync("git", args, { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+
+export function defaultBaseRef(env = process.env) {
+  if (env.SOURCE_CONSUMPTION_BASE) return env.SOURCE_CONSUMPTION_BASE;
+  return `origin/${env.GITHUB_BASE_REF || "main"}`;
+}
+
+// CI checks out a shallow PR merge commit with no remote-tracking branches, so
+// fetch the base when it is missing and fall back to the base tip when the
+// shallow history has no merge-base. HEAD is the PR merged into the base, so a
+// two-dot diff against the base tip still lists exactly the PR's additions.
+export function resolveBaseCommit(repoRoot, baseRef) {
+  const tryGit = (args) => { try { return git(repoRoot, args); } catch { return null; } };
+  if (!tryGit(["rev-parse", "--verify", "--quiet", `${baseRef}^{commit}`])) {
+    const remoteMatch = /^origin\/(.+)$/.exec(baseRef);
+    if (remoteMatch) tryGit(["fetch", "--no-tags", "--depth=50", "origin", `+refs/heads/${remoteMatch[1]}:refs/remotes/${baseRef}`]);
+  }
+  const mergeBase = tryGit(["merge-base", baseRef, "HEAD"]);
+  if (mergeBase) return mergeBase;
+  return git(repoRoot, ["rev-parse", "--verify", `${baseRef}^{commit}`]);
+}
+
+export function addedModules(repoRoot, baseCommit) {
+  return git(repoRoot, ["diff", "--name-only", "--diff-filter=A", baseCommit, "HEAD"])
     .split("\n").filter(Boolean);
 }
 
@@ -49,10 +70,10 @@ export function check(repoRoot, baseRef, added = addedModules(repoRoot, baseRef)
 
 function main() {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-  const baseRef = process.env.SOURCE_CONSUMPTION_BASE ?? "origin/main";
+  const baseRef = defaultBaseRef();
   if (!existsSync(path.join(repoRoot, ".git"))) return;
   try {
-    const missing = check(repoRoot, baseRef);
+    const missing = check(repoRoot, resolveBaseCommit(repoRoot, baseRef));
     if (!missing.length) return console.log("OK source-consumption guard — all added source modules are consumed");
     console.error("FAIL source-consumption guard:");
     for (const file of missing) console.error(`  - ${file} is added but has no production consumer`);
