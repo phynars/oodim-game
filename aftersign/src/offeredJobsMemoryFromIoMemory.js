@@ -135,15 +135,18 @@ export function offeredJobsMemoryFromIoMemory(memory) {
   // round-two spec walks.
   //   - sealed + skipped → guarded (low-risk errand)
   //   - opened + skipped → failed (redemption route)
-  // A sealed + done history is still a completed courier: Io's memory
-  // is replaced per delivery, so no served history distinguishes a
-  // trusted courier from a completed one yet; trusted-courier is not
-  // derived here.
+  // A sealed delivery plus an explicit acknowledgement is a durable
+  // player-produced trust signal: `acknowledge-kiosk` writes ROUTE_DONE
+  // before delivery. A skipped route remains guarded, so it takes
+  // precedence when the only route-attention fact is ROUTE_SKIPPED.
   if (sealedCount > 0 && routeSkippedCount > 0 && routeDoneCount === 0) {
     return { trustPosture: "guarded" };
   }
   if (sealedCount === 0 && openedCount > 0 && routeSkippedCount > 0 && routeDoneCount === 0) {
     return { priorOutcome: "failed" };
+  }
+  if (sealedCount > 0 && routeDoneCount > 0) {
+    return { trustPosture: "trusted-courier" };
   }
   if (sealedCount > 0) {
     return { priorOutcome: "completed" };
