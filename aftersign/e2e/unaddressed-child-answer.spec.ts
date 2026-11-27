@@ -88,7 +88,10 @@ test.describe("Unaddressed Child answer (#3055, moved to Act II by #3067)", () =
     await expect(card).toContainText("Where do you begin?");
     await expect(card).toContainText("Your answer: I don't know.");
     await expect(page.locator('[data-act-two-continuation="to-be-continued"]')).toBeVisible({ timeout: WAIT_MS });
-    await expect(page.locator('[data-act-two-continuation="to-be-continued"]')).toHaveText("To be continued.");
+    const review = page.locator('button[data-act-two-continuation="review-chapter"]');
+    await expect(review).toBeVisible({ timeout: WAIT_MS });
+    await review.tap();
+    await expect(review).toHaveText("Chapter review: Shortcut answer: take. Your answer: I don't know.");
   });
 
   test("restores the selected Unaddressed Child answer on the Act II end card in a fresh browser context", async ({ page, browser }) => {
