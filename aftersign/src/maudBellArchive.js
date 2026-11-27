@@ -144,7 +144,14 @@ export const renderMaudBellArchiveEnding = (
         beginEpisodeTwo.style.minHeight = "56px";
         beginEpisodeTwo.style.fontSize = "1.1rem";
         beginEpisodeTwo.style.fontWeight = "700";
-        beginEpisodeTwo.addEventListener("click", onBeginEpisodeTwo);
+        beginEpisodeTwo.addEventListener("click", () => {
+          if (beginEpisodeTwo.disabled) return;
+          beginEpisodeTwo.disabled = true;
+          beginEpisodeTwo.setAttribute("data-pending", "true");
+          beginEpisodeTwo.setAttribute("aria-busy", "true");
+          beginEpisodeTwo.textContent = "Opening Night Post…";
+          onBeginEpisodeTwo();
+        });
         card.append(continuation, beginEpisodeTwo);
       }
       return;
@@ -165,7 +172,14 @@ export const renderMaudBellArchiveEnding = (
       button.style.padding = "4px 8px";
       button.style.fontSize = "14px";
       button.style.lineHeight = "1.2";
-      button.addEventListener("click", () => onChooseDoor?.(choice.id));
+      button.addEventListener("click", () => {
+        if (button.disabled) return;
+        button.disabled = true;
+        button.setAttribute("data-pending", "true");
+        button.setAttribute("aria-busy", "true");
+        button.textContent = "Saving choice…";
+        onChooseDoor?.(choice.id);
+      });
       const consequence = doc.createElement("p");
       consequence.className = "maud-bell-archive__door-consequence";
       consequence.textContent = choice.consequence;

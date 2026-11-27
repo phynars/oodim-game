@@ -4782,6 +4782,13 @@ const choose = async (choiceId) => {
     // data stamp on the payback button below. The beat deliberately
     // stays on `io-return-recognition` so the DOM remains in a beat
     // the renderer owns.
+    const pendingButton = document.getElementById("orraPaybackAction");
+    if (pendingButton) {
+      pendingButton.disabled = true;
+      pendingButton.setAttribute("data-pending", "true");
+      pendingButton.setAttribute("aria-busy", "true");
+      pendingButton.textContent = "Carrying name…";
+    }
     state.player.orraPaybackAction = choiceId;
     // Mark the committed outcome on the button itself so the played
     // proof (`aftersign/e2e/orra-payback.playtest.spec.ts`) can

@@ -115,6 +115,9 @@ export function renderBellArchiveScene(
       });
       button.setAttribute("data-selected", "true");
       button.setAttribute("aria-pressed", "true");
+      button.setAttribute("data-pending", "true");
+      button.setAttribute("aria-busy", "true");
+      button.textContent = "Saving name…";
       const resolved = resolveBellArchiveOutcome(choice.name, sealedMemory);
       scene.setAttribute(BELL_ARCHIVE_OUTCOME_ATTRIBUTE, resolved.outcome);
       try {
