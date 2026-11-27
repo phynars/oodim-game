@@ -15,6 +15,7 @@ import {
   renderEpisodeTwoActOneOrchestration,
   resolveEpisodeTwoActOneOrchestration,
 } from "./src/episodeTwoActOneOrchestrator.js";
+import { NIKO_SHORTCUT_CHOICES } from "./src/nikoThread.js";
 import { renderNightPost } from "./src/nightPostRenderer.js";
 import { createCameraController } from "./src/presentation/cameraController.js";
 import { createDialogueController } from "./src/presentation/dialogueController.js";
