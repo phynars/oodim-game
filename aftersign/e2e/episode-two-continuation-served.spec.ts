@@ -167,6 +167,10 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await page.reload({ waitUntil: "load" });
     await expect(job).toHaveAttribute("data-episode-two-delivery-id", "ep2-sealed-ledger");
     await expect(page.locator("#acceptEpisodeTwoJob")).toBeDisabled();
+    const shortcutChoices = page.locator("[data-niko-shortcut-choice]");
+    await expect(shortcutChoices).toHaveCount(2);
+    await expect(shortcutChoices.nth(0)).toHaveAttribute("data-niko-shortcut-choice", "take");
+    await expect(shortcutChoices.nth(1)).toHaveAttribute("data-niko-shortcut-choice", "refuse");
   });
 
   test("Start fresh from the Night Post leaves it and stays left after reload", async ({ page }) => {

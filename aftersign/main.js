@@ -15,7 +15,8 @@ import {
   renderEpisodeTwoActOneOrchestration,
   resolveEpisodeTwoActOneOrchestration,
 } from "./src/episodeTwoActOneOrchestrator.js";
-import { NIKO_SHORTCUT_CHOICES, nikoRouteLine, nikoShortcutReceipt } from "./src/nikoThread.js";
+import { NIKO_SHORTCUT_CHOICES } from "./src/nikoThread.js";
+import { renderNightPost } from "./src/nightPostRenderer.js";
 import { createCameraController } from "./src/presentation/cameraController.js";
 import { createDialogueController } from "./src/presentation/dialogueController.js";
 import { createMobileInputController } from "./src/presentation/mobileInputController.js";
@@ -1763,152 +1764,39 @@ const lineForBeat = () => {
   }
   if (state.story.episodeTwoNightPost) {
     const host = typeof document !== "undefined" ? document.getElementById("episodeOneEnding") : null;
-    if (host && host.getAttribute("data-continuation") !== "night-post") {
-      host.replaceChildren();
-      host.setAttribute("data-continuation", "night-post");
-      const heading = document.createElement("strong");
-      heading.textContent = "Night Post";
-      const recall = document.createElement("p");
-      recall.setAttribute("data-night-post-door-choice", state.story.doorChoice ?? "");
-      recall.textContent = `Io remembers the door you chose: ${NIGHT_POST_DOOR_LABELS[state.story.doorChoice] ?? ""}.`;
-      host.append(heading, recall);
-      // #2918: the door chosen in Episode 1 decides the Episode 2 job.
-      const job = episodeTwoActOne.job;
-      if (job) {
-        const jobCard = document.createElement("section");
-        jobCard.id = "episodeTwoJob";
-        jobCard.setAttribute("data-episode-two-job-id", job.id);
-        jobCard.setAttribute("data-episode-two-door-choice", job.doorChoice);
-        const jobName = document.createElement("strong");
-        jobName.textContent = job.name;
-        const jobBrief = document.createElement("p");
-        jobBrief.textContent = job.brief;
-        const offer = document.createElement("p");
-        offer.className = "episode-two-job__io-offer";
-        offer.textContent = "Io: This is the work the door left for you.";
-        const accept = document.createElement("button");
-        accept.type = "button";
-        accept.id = "acceptEpisodeTwoJob";
-        accept.textContent = `Accept ${job.name}`;
-        accept.style.pointerEvents = "auto";
-        accept.style.minHeight = "44px";
-        const accepted = state.story.episodeTwoAcceptedJobId === job.id;
-        accept.disabled = accepted;
-        if (accepted) {
-          accept.textContent = "Accepted";
-          jobCard.setAttribute("data-episode-two-delivery-id", job.deliveryId);
-          jobCard.setAttribute("data-episode-two-accepted-job-id", job.id);
-        }
-        accept.addEventListener("click", async () => {
+    if (host) {
+      renderNightPost({
+        doc: document,
+        host,
+        doorChoice: state.story.doorChoice,
+        doorLabel: NIGHT_POST_DOOR_LABELS[state.story.doorChoice],
+        job: episodeTwoActOne.job,
+        acceptedJobId: state.story.episodeTwoAcceptedJobId,
+        nikoShortcutAnswer: state.story.nikoShortcutAnswer,
+        routeRisk: state.player.routeRisk,
+        routeRiskDeliveryId: state.player.routeRiskDeliveryId,
+        onAcceptJob: async (job) => {
           state.delivery.id = job.deliveryId;
           state.story.episodeTwoAcceptedJobId = job.id;
           markStateDirty();
           await persistAuthoritative({ dirty: true });
-          jobCard.setAttribute("data-episode-two-delivery-id", job.deliveryId);
-          jobCard.setAttribute("data-episode-two-accepted-job-id", job.id);
-          accept.disabled = true;
-          accept.textContent = "Accepted";
-          // Rebuild the Night Post composition so Niko is added after the
-          // player-visible acceptance transition.
           host.setAttribute("data-continuation", "");
           renderText();
           publishState();
-          // M7 closeout runs 63636847 and 52bb9de5: after Accept nothing
-          // visibly changed. Niko's shortcut choices were rendered below the
-          // bounded `.hud .panel` fold, and the player had to swipe to find
-          // them. Bring the last choice into view so both stay visible
-          // without a swipe. scrollIntoView scrolls every scrolling ancestor,
-          // including the panel.
-          const shortcutChoices = document.getElementById("nikoThread")?.querySelectorAll("[data-niko-shortcut-choice]") ?? [];
-          const lastChoice = shortcutChoices[shortcutChoices.length - 1];
-          if (lastChoice && typeof lastChoice.scrollIntoView === "function") {
-            lastChoice.scrollIntoView({ block: "nearest", inline: "nearest" });
-          }
-        });
-        jobCard.append(jobName, jobBrief, offer, accept);
-        if (!accepted) {
-          // Blind M6 closeout runs 97d3036a, f79363ac and 52b80054 each
-          // stopped at this offer and never saw Niko, who was drawn only
-          // after Accept. Niko now meets the player on arrival at the
-          // Night Post and says the stored route. The card sits above the
-          // job, so the bottom-pinned Accept stays in view. The shortcut
-          // choices still appear only after Accept (below).
-          const nikoGreeting = document.createElement("section");
-          nikoGreeting.id = "nikoThread";
-          nikoGreeting.setAttribute("data-npc", "niko-thread");
-          nikoGreeting.setAttribute("data-niko-greeting", "night-post");
-          const greetingLine = document.createElement("p");
-          greetingLine.setAttribute(
-            "data-niko-route",
-            state.player.routeRisk?.lastRoute === "safe"
-              ? "safe"
-              : state.player.routeRisk?.lastRoute === "fast"
-                ? "risky"
-                : "none",
-          );
-          greetingLine.textContent = nikoRouteLine(state.player.routeRisk, state.player.routeRiskDeliveryId);
-          nikoGreeting.append(greetingLine);
-          host.append(nikoGreeting);
-        }
-        host.append(jobCard);
-        if (accepted) {
-          const nikoCard = document.createElement("section");
-          nikoCard.id = "nikoThread";
-          nikoCard.setAttribute("data-npc", "niko-thread");
-          const routeLine = document.createElement("p");
-          routeLine.setAttribute(
-            "data-niko-route",
-            state.player.routeRisk?.lastRoute === "safe"
-              ? "safe"
-              : state.player.routeRisk?.lastRoute === "fast"
-                ? "risky"
-                : "none",
-          );
-          routeLine.textContent = nikoRouteLine(state.player.routeRisk, state.player.routeRiskDeliveryId);
-          nikoCard.append(routeLine);
-
-          const answer = state.story.nikoShortcutAnswer;
-          const receipt = nikoShortcutReceipt(answer);
-          if (receipt) {
-            const answerLine = document.createElement("p");
-            answerLine.setAttribute("data-niko-shortcut-answer", answer);
-            answerLine.textContent = receipt;
-            nikoCard.append(answerLine);
-          }
-          for (const [answerId, label] of [
-            [NIKO_SHORTCUT_CHOICES.TAKE, "Take the shortcut"],
-            [NIKO_SHORTCUT_CHOICES.REFUSE, "Refuse the shortcut"],
-          ]) {
-            const choice = document.createElement("button");
-            choice.type = "button";
-            choice.textContent = label;
-            choice.setAttribute("data-niko-shortcut-choice", answerId);
-            choice.setAttribute("aria-pressed", String(answer === answerId));
-            if (answer === answerId) choice.setAttribute("data-niko-shortcut-selected", "true");
-            choice.style.pointerEvents = "auto";
-            choice.style.minHeight = "44px";
-            choice.disabled = Boolean(answer);
-            choice.addEventListener("click", async () => {
-              if (state.story.nikoShortcutAnswer) return;
-              state.story.nikoShortcutAnswer = answerId;
-              // The visible Niko answer completes the accepted Episode 2
-              // delivery. Persist this terminal marker before replacing the
-              // Night Post controls with the locked Act I card.
-              state.story.episodeTwoActOneEnded = true;
-              markStateDirty();
-              await persistAuthoritative({ dirty: true });
-              host.setAttribute("data-continuation", "");
-              renderText();
-              publishState();
-            });
-            nikoCard.append(choice);
-          }
-          host.append(nikoCard);
-        }
-      }
-      // #2935: the Night Post (job offer + Accept, later Niko) is rebuilt
-      // into the bounded HUD panel. Pin its bottom edge into view so the
-      // phone player can tap Accept without swiping.
+        },
+        onChooseShortcut: async (answerId) => {
+          if (state.story.nikoShortcutAnswer) return;
+          state.story.nikoShortcutAnswer = answerId;
+          state.story.episodeTwoActOneEnded = true;
+          markStateDirty();
+          await persistAuthoritative({ dirty: true });
+          host.setAttribute("data-continuation", "");
+          renderText();
+          publishState();
+        },
+      });
+      // #2935: pin the Night Post into the bounded HUD panel so phone players
+      // can tap its visible controls without manually scrolling.
       scrollDialogueToNewestSection(host);
     }
     state.npcs.io.lastLine = `Night Post. I remember the door you chose: ${NIGHT_POST_DOOR_LABELS[state.story.doorChoice] ?? ""}.`;
