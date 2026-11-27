@@ -1242,6 +1242,9 @@ const state = {
     // A sealed packet is the boot default, not evidence that the player chose
     // to preserve it. Only a committed packet gesture may authorize seal memory.
     firstPacketInteracted: stored?.story?.firstPacketInteracted === true,
+    // A confirmed fresh start keeps the replay's first recognition cold,
+    // including if the page reloads before the player answers Io.
+    freshStartRecognition: stored?.story?.freshStartRecognition === true,
     episodeTwoNightPost: stored?.story?.episodeTwoNightPost === true,
     episodeTwoActOneEnded: stored?.story?.episodeTwoActOneEnded === true,
     // Episode 2 acceptance is its own durable fact. A delivery id names the
@@ -2048,10 +2051,17 @@ const syncIoLine = () => {
   } else if (state.scene.beat === "io-return-recognition") {
     const rememberedSealed = state.packet.sealed;
     const speakAsSealed = breakMode === "wrong-io-line" ? !rememberedSealed : rememberedSealed;
+    // The reset marker is persisted with the replay. Keep the first replay
+    // recognition cold across a reload until the player deliberately answers Io.
+    const freshStartRecognition = state.story.freshStartRecognition === true;
     const selected = selectIoRecognitionDialogue({
       playerId: state.player.id,
-      packetSealed: state.story.firstPacketInteracted === true ? speakAsSealed : null,
-      memory: state.story.firstPacketInteracted === true ? state.npcs.io.memory : [],
+      packetSealed: !freshStartRecognition && state.story.firstPacketInteracted === true
+        ? speakAsSealed
+        : null,
+      memory: !freshStartRecognition && state.story.firstPacketInteracted === true
+        ? state.npcs.io.memory
+        : [],
     });
     // Red-tag return keeps its OWN recognition line — do NOT append the
     // red-tag suffix to `selected.line`, because `selected.line` is a
@@ -4664,6 +4674,9 @@ const choose = async (choiceId) => {
       state.player.returnReason = pendingReason;
       markStateDirty();
     }
+    // This was the fresh run's first deliberate return tone. Subsequent
+    // recognition beats in this run may use only facts minted after reset.
+    state.story.freshStartRecognition = false;
     setBeat("return-tone-choice");
     // #1234: the tone the player just struck is marked "for later
     // episode use" in the script — persist it durably NOW, not at the
@@ -5893,7 +5906,11 @@ const deliverPacket = (source = "hud-button") => {
   void persistAuthoritative({ dirty: true });
 };
 
-const resetSliceSave = async () => {
+// `coldRecognition` is set only by the player's confirmed Start fresh tap
+// (#3099). The harness reset (`__game.resetSliceSave`) is a setup step that
+// places a returning player before the memory-citing dialogue, so it must not
+// suppress recognition of facts minted after it.
+const resetSliceSave = async ({ coldRecognition = false } = {}) => {
   resetConfirmationPending = false;
   resetButton.textContent = "Start fresh";
   resetButton.removeAttribute("data-reset-confirmation");
@@ -5925,6 +5942,10 @@ const resetSliceSave = async () => {
   state.story.doorChoice = null;
   state.story.firstPacketSealed = null;
   state.story.firstPacketInteracted = false;
+  // Keep the next return free of prior-run recognition after a player's
+  // confirmed Start fresh. This marker is cleared when the player chooses
+  // Io's return tone.
+  state.story.freshStartRecognition = coldRecognition === true;
   // PR #2909 F1: Start fresh must leave the Night Post too — otherwise
   // lineForBeat keeps taking the continuation branch and persistence saves
   // episodeTwoNightPost:true again.
@@ -6348,7 +6369,7 @@ resetButton.addEventListener("click", () => {
     return;
   }
   clearResetConfirmation();
-  void resetSliceSave();
+  void resetSliceSave({ coldRecognition: true });
 });
 resetButton.addEventListener("blur", clearResetConfirmation);
 window.addEventListener("resize", resize, { passive: true });
