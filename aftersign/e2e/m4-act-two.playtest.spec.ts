@@ -34,10 +34,72 @@ function slotUrl(slot: string, playerId: string): string {
   return `/aftersign/?slot=${slot}&player=${playerId}`;
 }
 
+// #3098: every tap that reveals controls must bring them into view with no
+// swipe. Controls are discovered from the page (any enabled, rendered
+// button), never from a list of names, so a reveal added later is covered.
+// Before each tap, every enabled button that was not on screen-state at the
+// previous tap must lie fully inside the phone viewport. Playwright's tap()
+// auto-scrolls its target, so this check runs BEFORE the tap.
+const seenControls = new WeakMap<Page, Set<string>>();
+
+async function enabledControlKeys(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll("button:not([disabled])"))
+      .filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden";
+      })
+      .map((el) => {
+        const attrs = Array.from(el.attributes)
+          .filter((a) => a.name === "id" || a.name.startsWith("data-"))
+          .filter((a) => !/feel|state|press|armed/i.test(a.name))
+          .map((a) => `${a.name}=${a.value}`)
+          .sort()
+          .join("&");
+        return `${attrs}|${(el.textContent || "").trim()}`;
+      }),
+  );
+}
+
+async function expectRevealedControlsInView(page: Page): Promise<void> {
+  const seen = seenControls.get(page);
+  if (!seen) return;
+  await expect
+    .poll(
+      async () =>
+        page.evaluate((seenKeys) => {
+          const seenSet = new Set(seenKeys);
+          const out: string[] = [];
+          for (const el of Array.from(document.querySelectorAll("button:not([disabled])"))) {
+            const r = el.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0 || getComputedStyle(el).visibility === "hidden") continue;
+            const attrs = Array.from(el.attributes)
+              .filter((a) => a.name === "id" || a.name.startsWith("data-"))
+              .filter((a) => !/feel|state|press|armed/i.test(a.name))
+              .map((a) => `${a.name}=${a.value}`)
+              .sort()
+              .join("&");
+            const key = `${attrs}|${(el.textContent || "").trim()}`;
+            if (seenSet.has(key)) continue;
+            if (r.top < -1 || r.bottom > window.innerHeight + 1) out.push(`${key} @ ${Math.round(r.top)}..${Math.round(r.bottom)}`);
+          }
+          return out;
+        }, [...seen]),
+      { message: "every newly revealed control is fully inside the phone viewport before the next tap", timeout: WAIT_MS },
+    )
+    .toEqual([]);
+}
+
+async function tapRevealed(page: Page, target: ReturnType<Page["locator"]>): Promise<void> {
+  await expectRevealedControlsInView(page);
+  seenControls.set(page, new Set(await enabledControlKeys(page)));
+  await target.tap();
+}
+
 async function tapVisible(page: Page, selector: string): Promise<void> {
   const target = page.locator(selector).first();
   await expect(target).toBeVisible({ timeout: WAIT_MS });
-  await target.tap();
+  await tapRevealed(page, target);
 }
 
 async function tapChoice(page: Page, choiceId: string): Promise<void> {
@@ -186,7 +248,7 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       const redTag = page.locator('button[data-choice-id="carry-red-tag-to-saint-orra"]:not([disabled])');
       await expect(redTag).toBeVisible({ timeout: WAIT_MS });
       await expect(redTag).toHaveText("Carry the red tag to Saint Orra");
-      await redTag.tap();
+      await tapRevealed(page, redTag);
 
       const recall = page.locator("#saintOrraRedTagRecall");
       await expect(recall).toHaveText(scenario.recall, { timeout: WAIT_MS });
@@ -220,15 +282,23 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       );
       await expect(maudEntry).toBeVisible({ timeout: WAIT_MS });
       await expect(maudEntry).toHaveText("Carry the name to the Bell Archive");
-      await maudEntry.tap();
+      await tapRevealed(page, maudEntry);
 
       const maud = page.locator('[data-beat="maud-bell-archive"]');
       await expect(maud).toBeVisible({ timeout: WAIT_MS });
       await expect(maud).toContainText(MAUD_TITLE);
       await expect(maud).toContainText(MAUD_PROMPT);
       const nameButton = page.locator(`button[data-maud-name-choice="${scenario.maudChoice}"]`);
+      // Carrying the name reveals this row. It must be tappable without a
+      // manual phone swipe, not merely present in the DOM.
+      await expect
+        .poll(async () => {
+          const bounds = await nameButton.boundingBox();
+          return !!bounds && bounds.y >= 0 && bounds.y + bounds.height <= PHONE_VIEWPORT.height;
+        }, { message: "revealed Bell Archive name choice is fully inside the phone viewport", timeout: WAIT_MS })
+        .toBe(true);
       const tappedName = await nameButton.textContent();
-      await nameButton.tap();
+      await tapRevealed(page, nameButton);
 
       const ending = page.locator(`[data-ending-id="${scenario.endingId}"]`);
       await expect(ending).toBeVisible({ timeout: WAIT_MS });
@@ -281,7 +351,7 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
         "archive control renders after Orra's need line",
       ).toBe(true);
       await expect(payback).toHaveText("Carry the name to the Bell Archive");
-      await payback.tap();
+      await tapRevealed(page, payback);
 
       const maud = page.locator('[data-beat="maud-bell-archive"]');
       await expect(maud).toBeVisible({ timeout: WAIT_MS });
@@ -325,7 +395,7 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       const nameButton = page.locator(`button[data-maud-name-choice="${scenario.maudChoice}"]`);
       await expect(nameButton).toBeEnabled({ timeout: WAIT_MS });
       const tappedName = await nameButton.textContent();
-      await nameButton.tap();
+      await tapRevealed(page, nameButton);
 
       const ending = page.locator(`[data-ending-id="${scenario.endingId}"]`);
       await expect(ending).toBeVisible({ timeout: WAIT_MS });
@@ -339,7 +409,7 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       const unlitDoor = ending.locator('button[data-choice-id="open-unlit-door"]');
       await expect(unlitDoor).toBeVisible({ timeout: WAIT_MS });
       await expect(unlitDoor).toHaveText("Go to the Unlit Door");
-      await unlitDoor.tap();
+      await tapRevealed(page, unlitDoor);
       await expect(ending).toHaveAttribute("data-unlit-door-open", "true");
       const doorCard = page.locator(`[data-ending-id="${scenario.endingId}"]`);
 
@@ -381,7 +451,7 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       await test.step("keeps the official record through a visible door tap and names this archive outcome in Io's recap", async () => {
         const officialRecord = doorCard.locator('button[data-choice-id="keep-official-record"]');
         await expect(officialRecord).toBeVisible();
-        await officialRecord.tap();
+        await tapRevealed(page, officialRecord);
         const ioFinal = doorCard.locator("[data-io-final-id]");
         await expect(ioFinal).toContainText(tappedName || "");
         await expect(ioFinal).toContainText(scenario.endingLight === "District light: lit" ? "stays lit" : "goes out");
