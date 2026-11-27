@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import { playRoute } from "./helpers/route";
+import { episodeTwoJob } from "./helpers/routes";
 
 const WAIT = 15_000;
 // Each test plays ~20 s on the head. Keep the cap tight: the fail-to-pass gate
@@ -13,8 +15,7 @@ test.describe("Act I end-card Act II continuation (#3054)", () => {
   test("shows and taps Continue to Act II from the Act I ending card at 390x844", async ({ page }) => {
     test.setTimeout(TEST_TIMEOUT);
     const id = Date.now();
-    await page.goto(`/aftersign/?slot=act-two-control-${id}&player=e2e-${id}`, { waitUntil: "load" });
-    await playToActOneEnd(page, "take");
+    await playToActOneEnd(page, `/aftersign/?slot=act-two-control-${id}&player=e2e-${id}`, "take");
     const continueButton = page.getByRole("button", { name: "Continue to Act II" });
     await tapVisible(page, continueButton);
 
@@ -25,8 +26,7 @@ test.describe("Act I end-card Act II continuation (#3054)", () => {
     test(`opens the ${answer} Act II card from the visible continuation control`, async ({ page }) => {
       test.setTimeout(TEST_TIMEOUT);
       const id = Date.now();
-      await page.goto(`/aftersign/?slot=act-two-${answer}-${id}&player=e2e-${id}`, { waitUntil: "load" });
-      await playToActOneEnd(page, answer);
+      await playToActOneEnd(page, `/aftersign/?slot=act-two-${answer}-${id}&player=e2e-${id}`, answer);
       await tap(page, CONTINUE_TO_ACT_TWO);
       const opening = page.locator(`[data-act-two-opening-id="episode-two-act-two-${answer}-opening"]`);
       await expect(opening).toBeVisible({ timeout: WAIT });
@@ -80,8 +80,7 @@ test.describe("Act I end-card Act II continuation (#3054)", () => {
     test(`restores each selected Act II opening after reload (${answer})`, async ({ page }) => {
       test.setTimeout(TEST_TIMEOUT);
       const id = Date.now();
-      await page.goto(`/aftersign/?slot=act-two-reload-${answer}-${id}&player=e2e-${id}`, { waitUntil: "load" });
-      await playToActOneEnd(page, answer);
+      await playToActOneEnd(page, `/aftersign/?slot=act-two-reload-${answer}-${id}&player=e2e-${id}`, answer);
       await tap(page, CONTINUE_TO_ACT_TWO);
       await expect(page.locator(`[data-act-two-opening-id="episode-two-act-two-${answer}-opening"]`)).toBeVisible({ timeout: WAIT });
       await page.reload({ waitUntil: "load" });
@@ -104,35 +103,12 @@ async function tap(page: Page, selector: string): Promise<void> {
   await tapVisible(page, page.locator(selector));
 }
 
-async function beat(page: Page, id: string): Promise<void> {
-  await expect(page.locator(`[data-beat-id="${id}"]`)).toBeVisible({ timeout: WAIT });
-}
-
-async function deliverOffered(page: Page, jobId: string): Promise<void> {
-  await beat(page, "packet-offered");
-  await tap(page, `#offeredJobs button[data-offered-job-id="${jobId}"]`);
-  await tap(page, "#packetButton");
-  await beat(page, "packet-choice");
-  await tap(page, 'button[data-choice-id="acknowledge-kiosk"]');
-  await tap(page, 'button[data-choice-id="deliver-packet"]');
-  await beat(page, "io-return-recognition");
-}
-
-async function playToActOneEnd(page: Page, answer: "take" | "refuse"): Promise<void> {
-  await deliverOffered(page, "job-safe-delivery");
-  await tap(page, 'button[data-return-reason="blunt"]:not([disabled])');
-  await beat(page, "return-tone-choice");
-  await tap(page, 'button[data-choice-id="ask-for-next-job"]');
-  await beat(page, "io-next-job");
-  await tap(page, 'button[data-choice-id="accept-second-packet"]');
-  await tap(page, 'button[data-choice-id="deliver-packet"]');
-  await deliverOffered(page, "job-night-transfer");
-  await tap(page, 'button[data-orra-payback-action="carry-name-to-bell-archive"]');
-  await tap(page, 'button[data-maud-name-choice="archive-decoy"]');
-  await tap(page, 'button[data-choice-id="open-unlit-door"]');
-  await tap(page, 'button[data-choice-id="keep-official-record"]');
-  await tap(page, "#beginEpisodeTwo");
-  await tap(page, "#acceptEpisodeTwoJob:not([disabled])");
+// Opens the URL at the accepted Episode 2 job (blunt return, archive decoy,
+// official record; played in CI and on the served replay with every route
+// control fully in the 390x844 view before its tap, seeded in the box), then
+// taps Niko's answer here, so the Act I ending card is always played.
+async function playToActOneEnd(page: Page, url: string, answer: "take" | "refuse"): Promise<void> {
+  await playRoute(page, url, episodeTwoJob("blunt", "archive-decoy", "keep-official-record"), { inViewport: true });
   await tap(page, answer === "take" ? 'button[data-niko-shortcut-choice="take"]' : 'button[data-niko-shortcut-choice="refuse"]');
   // The Act I ending card must be on screen before any continuation tap.
   await expect(page.locator('[data-ending-id="episode-two-act-one"]')).toBeVisible({ timeout: WAIT });

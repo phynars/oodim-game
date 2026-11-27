@@ -1,4 +1,6 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
+import { playRoute } from "./helpers/route";
+import { episodeTwoJob } from "./helpers/routes";
 
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 15_000;
@@ -18,16 +20,10 @@ async function tap(page: Page, selector: string) {
   await control.tap();
 }
 
+// Episode 1 (kind return, remembered name, official record) to the accepted
+// Episode 2 job: played in CI and on the served replay, seeded in the box.
 async function reachChild(page: Page, slot: string, player: string) {
-  await page.goto(`/aftersign/?slot=${slot}&player=${player}`, { waitUntil: "load" });
-  await expect(page.locator('[data-beat-id="packet-offered"]')).toBeVisible({ timeout: WAIT_MS });
-  for (const selector of [
-    '#offeredJobs button[data-offered-job-id="job-safe-delivery"]', "#packetButton", 'button[data-choice-id="acknowledge-kiosk"]', 'button[data-choice-id="deliver-packet"]',
-    'button[data-return-reason="kind"]', 'button[data-choice-id="ask-for-next-job"]', 'button[data-choice-id="accept-second-packet"]', 'button[data-choice-id="deliver-packet"]',
-    '#offeredJobs button[data-offered-job-id="job-night-transfer"]', "#packetButton", 'button[data-choice-id="acknowledge-kiosk"]', 'button[data-choice-id="deliver-packet"]',
-    'button[data-orra-payback-action="carry-name-to-bell-archive"]', 'button[data-maud-name-choice="remembered-name"]', 'button[data-choice-id="open-unlit-door"]',
-    'button[data-choice-id="keep-official-record"]', "#beginEpisodeTwo", "#acceptEpisodeTwoJob",
-  ]) await tap(page, selector);
+  await playRoute(page, `/aftersign/?slot=${slot}&player=${player}`, episodeTwoJob("kind", "remembered-name", "keep-official-record"));
 }
 
 async function chooseNikoTakeAndContinue(page: Page) {
