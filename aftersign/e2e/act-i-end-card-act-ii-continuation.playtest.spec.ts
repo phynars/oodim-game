@@ -91,16 +91,7 @@ test.describe("Act I end-card Act II continuation (#3054)", () => {
 
 async function expectVisibleInViewport(page: Page, locator: ReturnType<Page["locator"]>): Promise<void> {
   await expect(locator).toBeVisible({ timeout: WAIT });
-  const box = await locator.boundingBox();
-  const viewport = page.viewportSize();
-  expect(box).not.toBeNull();
-  expect(viewport).not.toBeNull();
-  expect(box!.x).toBeGreaterThanOrEqual(0);
-  expect(box!.y).toBeGreaterThanOrEqual(0);
-  // Chromium's device-scale rounding may leave a fraction of a pixel below
-  // the viewport even when the control is visibly flush with its edge.
-  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width + 0.5);
-  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height + 0.5);
+  await expect(locator).toBeInViewport({ ratio: 1 });
 }
 
 async function tapVisible(page: Page, control: ReturnType<Page["locator"]>): Promise<void> {
