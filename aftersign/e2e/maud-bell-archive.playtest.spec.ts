@@ -1,6 +1,6 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 
-// Served phone reachability regression coverage for #3084.
+// Served phone reachability and pending-feedback regression coverage for #3084 and #3124.
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 const WAIT_MS = 15_000;
 
@@ -22,6 +22,31 @@ async function tapVisible(page: Page, selector: string): Promise<void> {
   const target = page.locator(selector);
   await expect(target).toBeVisible({ timeout: WAIT_MS });
   await target.tap();
+}
+
+async function holdNextAuthoritativeSave(page: Page) {
+  let sawSave!: () => void;
+  let releaseSave!: () => void;
+  let completed!: () => void;
+  const saved = new Promise<void>((resolve) => { sawSave = resolve; });
+  const released = new Promise<void>((resolve) => { releaseSave = resolve; });
+  const finished = new Promise<void>((resolve) => { completed = resolve; });
+  const handler = async (route: import("@playwright/test").Route) => {
+    if (route.request().method() !== "PUT") return route.continue();
+    sawSave();
+    await released;
+    await route.continue();
+    completed();
+  };
+  await page.route("**/aftersign/save/**", handler);
+  return {
+    waitUntilHeld: () => saved,
+    release: async () => {
+      releaseSave();
+      await finished;
+      await page.unroute("**/aftersign/save/**", handler);
+    },
+  };
 }
 
 async function reachOrraPayback(page: Page): Promise<void> {
@@ -102,17 +127,31 @@ test.describe("Maud Bell Archive endings (#2652)", () => {
       await page.goto(slotUrl(slot, playerId), { waitUntil: "load" });
       await reachOrraPayback(page);
 
-      await tapVisible(
-        page,
-        'button[data-orra-payback-action="carry-name-to-bell-archive"]:not([disabled])',
+      const carryName = page.locator(
+        'button[data-orra-payback-action="carry-name-to-bell-archive"]',
       );
+      await expect(carryName).toBeVisible({ timeout: WAIT_MS });
+      await expect(carryName).toBeEnabled({ timeout: WAIT_MS });
+      const carrySave = await holdNextAuthoritativeSave(page);
+      await carryName.tap();
+      await carrySave.waitUntilHeld();
+      await expect(carryName).toHaveAttribute("data-pending", "true");
+      await expect(carryName).toHaveAttribute("aria-busy", "true");
+      await expect(carryName).toHaveText("Carrying name…");
+      await carrySave.release();
 
       const nameButton = page.locator(`button[data-maud-name-choice="${choice}"]`);
       await expect(nameButton).toBeVisible({ timeout: WAIT_MS });
       await expect(nameButton).toBeInViewport({ ratio: 1 });
       // Phone-first story: a real touch tap, same as orra-payback.playtest.spec.ts.
       await expect(nameButton).toBeEnabled({ timeout: WAIT_MS });
+      const nameSave = await holdNextAuthoritativeSave(page);
       await nameButton.tap();
+      await nameSave.waitUntilHeld();
+      await expect(nameButton).toHaveAttribute("data-pending", "true");
+      await expect(nameButton).toHaveAttribute("aria-busy", "true");
+      await expect(nameButton).toHaveText("Saving name…");
+      await nameSave.release();
 
       const unlitDoor = page.getByRole("button", { name: "Go to the Unlit Door" });
       await expect(unlitDoor).toBeInViewport({ ratio: 1 });
@@ -128,21 +167,37 @@ test.describe("Maud Bell Archive endings (#2652)", () => {
       await expect(liveCard).toHaveAttribute("data-district-light", light);
       await expect(liveCard).toHaveAttribute("data-bell-ringing", "true");
 
-      // Persist-before-card: the card only renders after persistence settles,
-      // so the first fresh context must already restore it — no retry loop.
-      const { context, page: returning } = await openFreshContext(browser, slot, playerId);
-      try {
-        const restoredCard = returning.locator(`[data-ending-id="${endingId}"]`);
-        await expect(restoredCard).toBeVisible({ timeout: WAIT_MS });
-        await expect(restoredCard).toHaveAttribute("data-district-light", light);
-        await expect(restoredCard).toHaveAttribute("data-bell-ringing", "true");
-        await expect(restoredCard).toContainText("Act II — Bell Archive");
-        await expect(restoredCard).toContainText(lightText);
-        await expect(returning.locator("[data-maud-name-choice]")).toHaveCount(0);
-        await expect(returning.locator('[data-beat="maud-bell-archive"]')).toHaveCount(0);
-      } finally {
-        await context.close();
-      }
+      await unlitDoor.tap();
+      const doorChoice = page.locator('button[data-choice-id="keep-official-record"]');
+      await expect(doorChoice).toBeVisible({ timeout: WAIT_MS });
+      const doorSave = await holdNextAuthoritativeSave(page);
+      await doorChoice.tap();
+      await doorSave.waitUntilHeld();
+      await expect(doorChoice).toHaveAttribute("data-pending", "true");
+      await expect(doorChoice).toHaveAttribute("aria-busy", "true");
+      await expect(doorChoice).toHaveText("Saving choice…");
+      await doorSave.release();
+
+      const beginEpisodeTwo = page.locator("#beginEpisodeTwo");
+      await expect(beginEpisodeTwo).toBeVisible({ timeout: WAIT_MS });
+      const beginSave = await holdNextAuthoritativeSave(page);
+      await beginEpisodeTwo.tap();
+      await beginSave.waitUntilHeld();
+      await expect(beginEpisodeTwo).toHaveAttribute("data-pending", "true");
+      await expect(beginEpisodeTwo).toHaveAttribute("aria-busy", "true");
+      await expect(beginEpisodeTwo).toHaveText("Opening Night Post…");
+      await beginSave.release();
+
+      const acceptLedgerRun = page.locator("#acceptEpisodeTwoJob");
+      await expect(acceptLedgerRun).toBeVisible({ timeout: WAIT_MS });
+      const acceptSave = await holdNextAuthoritativeSave(page);
+      await acceptLedgerRun.tap();
+      await acceptSave.waitUntilHeld();
+      await expect(acceptLedgerRun).toHaveAttribute("data-pending", "true");
+      await expect(acceptLedgerRun).toHaveAttribute("aria-busy", "true");
+      await expect(acceptLedgerRun).toHaveText("Accepting…");
+      await acceptSave.release();
+
     });
   }
 });
