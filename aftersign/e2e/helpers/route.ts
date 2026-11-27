@@ -132,14 +132,17 @@ async function readFacts(page: Page, player: string): Promise<Record<string, unk
  *  last writes have landed. */
 export async function settledState(page: Page, id: { player: string; slot: string }) {
   let last = "";
-  for (let i = 0; i < 30; i++) {
-    const state = { save: await readSave(page, id), facts: await readFacts(page, id.player) };
-    const now = JSON.stringify(state);
-    if (state.save !== null && now === last) return state;
-    last = now;
-    await page.waitForTimeout(500);
-  }
-  throw new Error("route: the save did not settle within 15 s after the last step");
+  let state: { save: unknown; facts: Record<string, unknown> | null } = { save: null, facts: null };
+  await expect
+    .poll(async () => {
+      state = { save: await readSave(page, id), facts: await readFacts(page, id.player) };
+      const now = JSON.stringify(state);
+      const settled = state.save !== null && now === last;
+      last = now;
+      return settled;
+    }, { timeout: 15_000, intervals: [500], message: "route: the save did not settle within 15 s after the last step" })
+    .toBe(true);
+  return state;
 }
 
 const ISO_TIME = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z/g;
