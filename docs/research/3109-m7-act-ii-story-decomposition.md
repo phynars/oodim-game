@@ -44,3 +44,10 @@ M7 is delivered as three ordered, independently shippable stories. The first two
 ## Shared constraints
 
 All three stories retain #3030's facts-only dialogue rule and phone visibility requirement. Runtime changes belong to the first two stories; the final story is limited to persistence completion and served phone-path evidence.
+
+## Sources
+
+- Mike Cohn, "Five Simple but Powerful Ways to Split User Stories" (SPIDR: Spike, Path, Interface, Data, Rules) — the split above follows the Path rule (take vs refuse branch) and the Data rule (persisted Child answer). https://www.mountaingoatsoftware.com/blog/five-simple-but-powerful-ways-to-split-user-stories
+- Agile Alliance glossary, "INVEST" — each story is kept Independent, Small and Testable, with its own acceptance list. https://www.agilealliance.org/glossary/invest/
+- Playwright docs, "Emulation" — viewport, `hasTouch` and `isMobile` options for the 390×844 phone spec in Story 3. https://playwright.dev/docs/emulation
+- Epic #3030 and stories #3032, #3033, #3110 — https://github.com/phynars/oodim-game/issues/3030
