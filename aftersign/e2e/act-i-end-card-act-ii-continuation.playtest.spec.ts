@@ -16,8 +16,8 @@ test.describe("Act I end-card Act II continuation (#3054)", () => {
     await page.goto(`/aftersign/?slot=act-two-control-${id}&player=e2e-${id}`, { waitUntil: "load" });
     await playToActOneEnd(page, "take");
     const continueButton = page.getByRole("button", { name: "Continue to Act II" });
-    await expect(continueButton).toBeVisible({ timeout: WAIT });
-    await continueButton.tap({ timeout: WAIT });
+    await tapVisible(page, continueButton);
+
     await expect(page.locator('[data-act-two-opening-id="episode-two-act-two-take-opening"]')).toBeVisible({ timeout: WAIT });
   });
 
@@ -39,7 +39,7 @@ test.describe("Act I end-card Act II continuation (#3054)", () => {
       const selectedAnswerCopy = answer === "take"
         ? "I know where to begin."
         : "I don't know.";
-      await selectedAnswer.tap({ timeout: WAIT });
+      await tapVisible(page, selectedAnswer);
       const childResponse = opening.locator('[data-unaddressed-child-response="true"]');
       await expect(childResponse).toContainText(
         answer === "take"
@@ -51,11 +51,24 @@ test.describe("Act I end-card Act II continuation (#3054)", () => {
       await expect(endCard).toContainText(`Shortcut answer: ${answer}`);
       await expect(endCard).toContainText("Where do you begin?");
       await expect(endCard).toContainText(selectedAnswerCopy);
-      await page.reload({ waitUntil: "load" });
-      const restoredEndCard = page.locator('[data-act-two-end-card="true"]');
+      await expectVisibleInViewport(page, childResponse);
+      await expectVisibleInViewport(page, endCard);
+
+      // A new browser context has no in-memory game state, so this distinguishes
+      // slot restoration from reusing the original page's in-memory state.
+      const restoredContext = await page.context().browser()!.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+        isMobile: true,
+      });
+      const restoredPage = await restoredContext.newPage();
+      await restoredPage.goto(`/aftersign/?slot=act-two-${answer}-${id}&player=e2e-${id}`, { waitUntil: "load" });
+      const restoredEndCard = restoredPage.locator('[data-act-two-end-card="true"]');
       await expect(restoredEndCard).toContainText(`Shortcut answer: ${answer}`, { timeout: WAIT });
       await expect(restoredEndCard).toContainText("Where do you begin?");
       await expect(restoredEndCard).toContainText(selectedAnswerCopy);
+      await expectVisibleInViewport(restoredPage, restoredEndCard);
+      await restoredContext.close();
     });
   }
 
@@ -73,10 +86,27 @@ test.describe("Act I end-card Act II continuation (#3054)", () => {
   }
 });
 
-async function tap(page: Page, selector: string): Promise<void> {
-  const control = page.locator(selector);
-  await expect(control).toBeVisible({ timeout: WAIT });
+async function expectVisibleInViewport(page: Page, locator: ReturnType<Page["locator"]>): Promise<void> {
+  await expect(locator).toBeVisible({ timeout: WAIT });
+  const box = await locator.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  // Chromium's device-scale rounding may leave a fraction of a pixel below
+  // the viewport even when the control is visibly flush with its edge.
+  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width + 0.5);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height + 0.5);
+}
+
+async function tapVisible(page: Page, control: ReturnType<Page["locator"]>): Promise<void> {
+  await expectVisibleInViewport(page, control);
   await control.tap({ timeout: WAIT });
+}
+
+async function tap(page: Page, selector: string): Promise<void> {
+  await tapVisible(page, page.locator(selector));
 }
 
 async function beat(page: Page, id: string): Promise<void> {
