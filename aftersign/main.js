@@ -6010,7 +6010,11 @@ const deliverPacket = (source = "hud-button") => {
   void persistAuthoritative({ dirty: true });
 };
 
-const resetSliceSave = async () => {
+// `coldRecognition` is set only by the player's confirmed Start fresh tap
+// (#3099). The harness reset (`__game.resetSliceSave`) is a setup step that
+// places a returning player before the memory-citing dialogue, so it must not
+// suppress recognition of facts minted after it.
+const resetSliceSave = async ({ coldRecognition = false } = {}) => {
   resetConfirmationPending = false;
   resetButton.textContent = "Start fresh";
   resetButton.removeAttribute("data-reset-confirmation");
@@ -6042,9 +6046,10 @@ const resetSliceSave = async () => {
   state.story.doorChoice = null;
   state.story.firstPacketSealed = null;
   state.story.firstPacketInteracted = false;
-  // Keep the next return free of prior-run recognition. This marker is
-  // cleared when the player chooses Io's return tone below.
-  state.story.freshStartRecognition = true;
+  // Keep the next return free of prior-run recognition after a player's
+  // confirmed Start fresh. This marker is cleared when the player chooses
+  // Io's return tone.
+  state.story.freshStartRecognition = coldRecognition === true;
   // PR #2909 F1: Start fresh must leave the Night Post too — otherwise
   // lineForBeat keeps taking the continuation branch and persistence saves
   // episodeTwoNightPost:true again.
@@ -6468,7 +6473,7 @@ resetButton.addEventListener("click", () => {
     return;
   }
   clearResetConfirmation();
-  void resetSliceSave();
+  void resetSliceSave({ coldRecognition: true });
 });
 resetButton.addEventListener("blur", clearResetConfirmation);
 window.addEventListener("resize", resize, { passive: true });
