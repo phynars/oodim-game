@@ -56,10 +56,11 @@ import { recordSaveRequests, waitForLandedClear } from "./helpers/saveRequests";
 //   • The vigil tray's visibility is gated on
 //     `isNextJobBeat && !endingId` (aftersign/main.js renderText).
 //     There is NO `meet-orra` prerequisite and, since #2577, no
-//     acceptance prerequisite. The ending's red-tag axis reads only
-//     `player.redTagAccepted`, set solely by `accept-second-packet`.
-//     The spec therefore taps straight from the handoff into
-//     `#lightVigilButton`; no dispatch of `meet-orra` through the
+//     acceptance prerequisite. The ending's red-tag axis reads
+//     `player.redTagAccepted`: the visible `accept-second-packet` tap and
+//     the visible `light-vigil` tap each establish that fact for their
+//     respective player commitments. The spec therefore taps straight from
+//     the handoff into `#lightVigilButton`; no dispatch of `meet-orra` through the
 //     harness input seam is required or performed (fixes Soren's
 //     iter-6 blocker on PR #2265: the played-acceptance guard
 //     `playedAcceptanceNoHarnessInput.test.ts` forbids any
@@ -418,12 +419,15 @@ test("asking what changed retires that button but keeps the red tag takeable (#2
   await expect(page.locator("#packetButton")).toHaveText("Red tag — Saint Orra");
 });
 
-test("asking what changed then lighting the vigil visibly ends Episode 1 without accepting the red tag (#3023)", async ({ page }) => {
+test("asking what changed then lighting the vigil visibly ends Episode 1 with the light on and red tag accepted (#3100)", async ({ page }) => {
   test.setTimeout(COLD_START_MS);
   await page.setViewportSize(PHONE_VIEWPORT);
-  await page.goto(`/aftersign/?slot=withheld-red-tag-${Date.now()}`, { waitUntil: "load" });
+  const player = `light-vigil-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  await page.goto(
+    `/aftersign/?slot=light-vigil-accepts-tag-${Date.now()}&player=${player}`,
+    { waitUntil: "load" },
+  );
   await waitForVersion(page);
-  // #3023: before the tap, the vigil control must say that it ends Episode 1.
   await waitForBeat(page, "packet-offered");
   await performPacketGesture(page, "sealed");
   await waitForBeat(page, "packet-choice");
@@ -444,8 +448,21 @@ test("asking what changed then lighting the vigil visibly ends Episode 1 without
   await waitForEndingPublished(page);
 
   const endingCard = await readEndingCard(page);
-  await expect(endingCard).toContainText("red tag was not accepted");
-  await expect(endingCard).toContainText("district light goes out");
+  await expect(endingCard).toContainText("red tag for Saint Orra");
+  await expect(endingCard).toContainText("South district light: lit");
+
+  const freshContext = await page.context().browser()!.newContext({
+    viewport: PHONE_VIEWPORT,
+    hasTouch: true,
+    isMobile: true,
+  });
+  const freshPage = await freshContext.newPage();
+  await freshPage.goto(page.url(), { waitUntil: "load" });
+  await waitForVersion(freshPage);
+  const restoredEnding = await readEndingCard(freshPage);
+  await expect(restoredEnding).toContainText("red tag for Saint Orra");
+  await expect(restoredEnding).toContainText("South district light: lit");
+  await freshContext.close();
 });
 
 async function carryRedTagToSaintOrra(page: Page): Promise<void> {

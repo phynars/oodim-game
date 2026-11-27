@@ -4603,15 +4603,16 @@ const choose = async (choiceId) => {
     // aftersign/e2e/orra-served-recognition.spec.ts can prove Orra
     // recognized the vigil action by REFERENCE (not by English text).
     state.npcs.orra.lastLineMemoryRefs = [state.npcs.orra.lastLineId];
-    // Both visible vigil choices complete the episode. The action-specific
-    // memory fact and Orra return line above preserve their distinction.
+    // Both visible vigil choices complete the episode. Lighting the vigil is
+    // the player's visible acceptance of Orra's red tag: it promises the
+    // light stays on, so it must commit the matching durable outcome. The
+    // canonical forceSave() below persists this field with the ending.
+    if (choiceId === "light-vigil") {
+      state.player.redTagAccepted = true;
+    }
     if (choiceId === "light-vigil" || choiceId === "spare-vigil") {
       const ending = resolveEpisodeOneEnding({
         packetSealed: state.packet.sealed,
-        // #2577: read ONLY the explicit acceptance fact. `ask-for-next-job`
-        // arms `secondPacketHandoffAccepted` without any accept tap, so
-        // reading it here would hand every run the "accepted" ending.
-        // Must match the reload path in lineForBeat().
         redTagCarried: state.player.redTagAccepted === true,
       });
       state.story.endingId = ending.id;
