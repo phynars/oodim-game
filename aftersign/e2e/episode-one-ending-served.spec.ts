@@ -295,6 +295,9 @@ async function runToEnding(
   outcome: "sealed" | "opened",
   acceptRedTag = true,
   secondPacketChoice: "accept-second-packet" | "ask-what-changed" = "accept-second-packet",
+  // #3100: lighting the vigil is itself the visible acceptance of the red
+  // tag, so a run that must end with the tag withheld spares the vigil.
+  vigilChoice: "light-vigil" | "spare-vigil" = acceptRedTag ? "light-vigil" : "spare-vigil",
 ): Promise<{ x: number; y: number }> {
   await waitForBeat(page, "packet-offered");
   await performPacketGesture(page, outcome);
@@ -348,11 +351,11 @@ async function runToEnding(
   if (!oldNextJobBox) {
     throw new Error("Deliver next packet must have a phone-tappable location before the ending");
   }
-  const vigilControl = page.locator('button[data-choice-id="light-vigil"]:not([disabled])');
+  const vigilControl = page.locator(`button[data-choice-id="${vigilChoice}"]:not([disabled])`);
   await expect(vigilControl, "the visible vigil control must accept the player's tap").toBeVisible({
     timeout: WAIT_MS,
   });
-  await page.locator("#lightVigilButton").click();
+  await page.locator(vigilChoice === "light-vigil" ? "#lightVigilButton" : "#spareVigilButton").click();
 
   await waitForEndingPublished(page);
   return {
