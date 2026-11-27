@@ -17,6 +17,7 @@
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { check as checkSourceConsumption, defaultBaseRef, resolveBaseCommit } from "./check-source-consumption.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (p) => readFileSync(path.join(repoRoot, p), "utf8");
@@ -78,6 +79,18 @@ if (briefBlock && architectureBlock && briefBlock !== architectureBlock) {
 
 if (!architecture.includes("docs/flagship/BRIEF.md")) {
   errors.push(architecturePath + " must point contributors to docs/flagship/BRIEF.md as canonical source");
+}
+
+const sourceConsumptionBase = defaultBaseRef();
+if (existsSync(path.join(repoRoot, ".git"))) {
+  try {
+    const baseCommit = resolveBaseCommit(repoRoot, sourceConsumptionBase);
+    for (const file of checkSourceConsumption(repoRoot, baseCommit)) {
+      errors.push(`${file} is added but has no production consumer — import/require it from non-test source or register its path in a package script`);
+    }
+  } catch (error) {
+    errors.push(`source-consumption guard could not compare ${sourceConsumptionBase}...HEAD: ${error.message}`);
+  }
 }
 
 if (errors.length) {
