@@ -79,6 +79,7 @@ export const createPersistHelpers = ({
       firstPacketSealed:
         typeof state.story?.firstPacketSealed === "boolean" ? state.story.firstPacketSealed : null,
       firstPacketInteracted: state.story?.firstPacketInteracted === true,
+      freshStartRecognition: state.story?.freshStartRecognition === true,
       episodeTwoNightPost: state.story?.episodeTwoNightPost === true,
       episodeTwoActOneEnded: state.story?.episodeTwoActOneEnded === true,
       episodeTwoAcceptedJobId:

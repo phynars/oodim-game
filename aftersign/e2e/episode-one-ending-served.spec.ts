@@ -669,14 +669,25 @@ test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
       "Keep it sealed if you want the city to trust you. I will remember which version of you touches that blue kiosk.",
     );
 
+    // Replay through visible controls: Start fresh must suppress the earlier
+    // run's recognition when Io first sees this new delivery.
+    await page.locator("#packetButton").click();
+    await tapChoice(page, "skip-kiosk-acknowledge");
+    await tapChoice(page, "deliver-packet");
+    await waitForBeat(page, "io-return-recognition");
+    await expect(page.locator("#line")).toHaveText(
+      "I don't know your pattern yet. Stand where the rain can see you.",
+    );
+
     // Reload verifies that the fresh projection persists beyond this page's
     // in-memory reset; this spec does not independently inspect save requests.
     await page.reload({ waitUntil: "load" });
     await waitForVersion(page);
     await expect(page.locator("#packetButton")).toContainText("Blue packet");
     await expect(page.locator("#packetButton")).not.toContainText("Red tag");
+    await waitForBeat(page, "io-return-recognition");
     await expect(page.locator("#line")).toHaveText(
-      "Keep it sealed if you want the city to trust you. I will remember which version of you touches that blue kiosk.",
+      "I don't know your pattern yet. Stand where the rain can see you.",
     );
   });
 
