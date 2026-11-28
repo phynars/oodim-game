@@ -107,6 +107,13 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await expectUnclippedInPanel(page, shortcutChoices.nth(0));
     await expectUnclippedInPanel(page, shortcutChoices.nth(1));
     await expect(page.locator("#beginEpisodeTwo")).toHaveCount(0);
+    // #3125: the door-choice sentence must appear once on screen (Io's #line),
+    // not again inside the Night Post panel.
+    await expect(page.getByText(/the door you chose/i)).toHaveCount(1);
+    await expect(page.locator("#episodeOneEnding")).not.toContainText("the door you chose");
+    await expect(page.locator("#episodeOneEnding [data-niko-shortcut-explanation]")).toHaveText(
+      "Niko offers a quicker route to the Night Post registry; taking it changes how you arrive.",
+    );
     await expect(page.locator("#episodeOneEnding [data-ending-id]")).toHaveCount(0);
   });
 
@@ -116,7 +123,11 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await page.locator("#beginEpisodeTwo").tap();
     const nightPost = page.locator('#episodeOneEnding[data-continuation="night-post"]');
     await expect(nightPost).toBeVisible({ timeout: WAIT_MS });
-    await expect(nightPost).toContainText("Keep the official record");
+    await expect(page.getByText(/the door you chose/i)).toHaveCount(1);
+    await expect(page.locator("#line")).toContainText("Keep the official record");
+    await expect(nightPost.locator('[data-night-post-door-choice="keep-official-record"]')).toHaveCount(1);
+    await expect(page.locator("#line")).not.toContainText("Protect the private lie");
+    await expect(page.locator("#line")).not.toContainText("Hang a new sign");
     await expect(nightPost).not.toContainText("Protect the private lie");
     await expect(nightPost).not.toContainText("Hang a new sign");
   });
@@ -128,7 +139,8 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toBeVisible({ timeout: WAIT_MS });
     await page.reload({ waitUntil: "load" });
     await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toBeVisible({ timeout: WAIT_MS });
-    await expect(page.locator("#episodeOneEnding")).toContainText("Keep the official record");
+    await expect(page.getByText(/the door you chose/i)).toHaveCount(1);
+    await expect(page.locator("#line")).toContainText("Keep the official record");
     await expect(page.locator("#beginEpisodeTwo")).toHaveCount(0);
   });
 
