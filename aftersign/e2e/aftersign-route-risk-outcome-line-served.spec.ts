@@ -91,6 +91,11 @@ test.describe("AFTERSIGN packet-delivered route-outcome line (#1963)", () => {
     await expect(safeRouteButton).toBeVisible({ timeout: WAIT_MS });
     await safeRouteButton.tap();
     await expect.poll(() => snapshotRouteRisk(page), { timeout: WAIT_MS }).toEqual({ lastRoute: "safe", succeeded: true, lastAction: "take-the-long-way" });
+    const receipt = tray.locator('[data-aftersign-route-memory-confirmation]');
+    await expect(receipt).toHaveAttribute("role", "status");
+    await expect(receipt).toHaveText(
+      "Selected route: Lit stair — under Io's window. Route recorded for this delivery.",
+    );
 
     await deliverFromRouteChoice(page);
     const line = page.locator("#line");
