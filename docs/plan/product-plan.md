@@ -4,7 +4,37 @@
 
 A phone player takes a delivery job, makes a consequential choice, and returns to a world that remembers mechanically: what the player can do next changes, not merely what Io says. Ship the smallest complete replayable loop at https://game.oodim.com/aftersign before adding characters or polish. Memory is progression; merged components are not acceptance.
 
-## Planning checkpoint — 2026-11-24 (supersedes everything below; sections below are history)
+## Planning checkpoint — 2026-11-28 (supersedes everything below; sections below are history)
+
+### M7 — ACTIVE. Deadline: 2027-01-07 · 40 days remaining · epic #3030
+
+Outcome is unchanged from the 2026-11-24 checkpoint below. A phone player taps "Continue to Act II". Their stored shortcut answer picks one of two Act II openings. The Unaddressed Child asks one question and stores the answer. The Act II end card states both answers, and it restores in a later session.
+
+Where it stands:
+- Build stories #3031, #3032, #3033 (and #3083, #3084) are closed.
+- The gate spec `aftersign/e2e/act-i-end-card-act-ii-continuation.playtest.spec.ts` (PR #3112) passes 5/5 at `de6091e`. It drives both shortcut branches by taps only at 390×844 and restores in a fresh context. This is M7's PLAYTEST story. It satisfies criteria 1-3 of #3110.
+- M7 is not closed. A blind closeout run has not been played on the deployed build.
+
+### Story map (M7-E1, ordered by time remaining)
+
+With 40 days left, the rule is: something rough that a player can complete beats something polished that is half done. Cut scope before slipping the date.
+
+| # | Story | Kind | Status |
+|---|---|---|---|
+| #3112 | Taps-only 390×844 Act II spec, both branches plus restore | playtest gate | merged, green |
+| #3110 | Act II restore. Criteria 1-3 are met by #3112. Criterion 4 is open. | code | open |
+| #3128 | Route-wide guard that new content comes into view without a manual swipe (P1) | tests (harness) | open |
+| #3144 | The Episode 1 job screen shows three "next step" buttons, and the end-episode buttons are visible before the job is done | bug (clarity) | open, from the daily playtest `4e19bf1e` |
+| #3146 | Io's delivery replies read as if they ignore the player's choices ("I ran early" → "You kept to the light") | bug (possible false memory) | open, from the daily playtest `4e19bf1e` |
+| (to file) | "Return to Io" waits for the player's tap. It does not auto-advance after about 1180 ms (`aftersign/src/runtime/inputAdapters.js:295-301`). | code (S) | the product call is decided here |
+
+Product call, Return to Io: **drop the auto-advance and wait for the tap.** A control that moves on before the player can press it breaks taps-only play, and removing it is the cheapest playable fix.
+
+On #3146: the player tapped "Lit stair", and "You kept to the light" is probably the reaction to that route rather than to "I ran early". The repeated "blue seal" lines also match the "Blue packet" tap. So this is most likely a copy problem: the reply does not say which choice it is answering. It is not yet confirmed as a false memory. The M7 metric is 0 false memories in the closeout, and every closeout plays through Episode 1. So #3146 must either be reproduced and fixed, or marked no-repro with that reasoning, before the closeout runs.
+
+Next after #3144, #3146 and the Return-to-Io story merge: run the blind closeout against the deployed build, using the closeout question in #3030. Closeout runs are capped at 2 per 24 h.
+
+## Planning checkpoint — 2026-11-24 (history)
 
 Authority: `docs/flagship/BRIEF.md` § "After M6: who closes a milestone and names the next". The Meta-Moderator (Charlie Shin) closed M6 and named M7. The active milestone is the open epic **#3030**.
 
