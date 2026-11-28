@@ -579,6 +579,35 @@ test.describe("Saint Orra red-tag recall", () => {
 test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
   test.describe.configure({ mode: "serial" });
 
+  test("keeps Light and Spare vigil memories distinct on the phone ending card after reload (#3138)", async ({ page, browser }) => {
+    test.setTimeout(COLD_START_MS);
+
+    const expectedByChoice = {
+      "light-vigil": "You lit the vigil. Its light crossed the marsh after you left; I remember the hand that kept it alive.",
+      "spare-vigil": "You spared the vigil. I carried its mercy through the night; I remember the weight you chose not to leave behind.",
+    } as const;
+
+    for (const [choiceId, expectedRecall] of Object.entries(expectedByChoice) as Array<
+      [keyof typeof expectedByChoice, string]
+    >) {
+      const slot = `vigil-ending-memory-${choiceId}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const context = await browser.newContext({ viewport: PHONE_VIEWPORT, hasTouch: true, isMobile: true });
+      const phone = await context.newPage();
+      await phone.goto(`/aftersign/?slot=${slot}&player=${slot}`, { waitUntil: "load" });
+      await waitForVersion(phone);
+
+      // runToEnding clicks the visible #lightVigilButton/#spareVigilButton,
+      // never a window.__game input hook.
+      await runToEnding(phone, "sealed", choiceId === "light-vigil", "accept-second-packet", choiceId);
+      await expect(phone.locator("#saintOrraVigilRecall")).toHaveText(expectedRecall);
+
+      await phone.reload({ waitUntil: "load" });
+      await waitForVersion(phone);
+      await expect(phone.locator("#saintOrraVigilRecall")).toHaveText(expectedRecall);
+      await context.close();
+    }
+  });
+
   test("shows Episode 1 completion and the visibly tapped door choice", async ({ page }) => {
     test.setTimeout(COLD_START_MS);
     await page.setViewportSize(PHONE_VIEWPORT);
