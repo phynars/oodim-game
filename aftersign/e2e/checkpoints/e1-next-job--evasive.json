@@ -1,0 +1,154 @@
+{
+ "name": "e1-next-job--evasive",
+ "stepsHash": "d55f17cd70cc1c01",
+ "steps": [
+  {
+   "beat": "packet-offered"
+  },
+  {
+   "tap": "#offeredJobs button[data-offered-job-id=\"job-safe-delivery\"]"
+  },
+  {
+   "tap": "#packetButton"
+  },
+  {
+   "beat": "packet-choice"
+  },
+  {
+   "tap": "button[data-choice-id=\"acknowledge-kiosk\"]:not([disabled])"
+  },
+  {
+   "tap": "button[data-choice-id=\"deliver-packet\"]:not([disabled])"
+  },
+  {
+   "beat": "io-return-recognition"
+  },
+  {
+   "tap": "button[data-return-reason=\"evasive\"]:not([disabled])"
+  },
+  {
+   "beat": "return-tone-choice"
+  },
+  {
+   "tap": "button[data-choice-id=\"ask-for-next-job\"]:not([disabled])"
+  },
+  {
+   "beat": "io-next-job"
+  }
+ ],
+ "save": {
+  "beat": "io-next-job",
+  "player": {
+   "id": "{{player}}",
+   "name": null,
+   "flags": {
+    "io_intro_seen": true
+   },
+   "x": -1.8,
+   "z": 1.15,
+   "facingRadians": 3.141592653589793,
+   "secondAction": "done",
+   "returnReason": "evasive",
+   "routeRisk": null,
+   "routeRiskDeliveryId": null,
+   "selectedJobOfferId": "job-safe-delivery",
+   "secondPacketHandoffAccepted": true,
+   "redTagAccepted": false,
+   "redTagFirstTap": null,
+   "redTagDeliveredToSaintOrra": false,
+   "orraPaybackAction": null
+  },
+  "packet": {
+   "delivered": true,
+   "route": "blue rainline",
+   "sealed": true,
+   "deliveredAt": "2026-11-28T03:49:08.238Z"
+  },
+  "delivery": {
+   "id": "red-tag",
+   "outcome": "unknown"
+  },
+  "story": {
+   "endingId": null,
+   "endingCause": null,
+   "maudBellArchiveEndingId": null,
+   "maudBellArchiveName": null,
+   "maudBellArchiveDoorOpen": false,
+   "doorChoice": null,
+   "firstPacketSealed": true,
+   "firstPacketInteracted": true,
+   "freshStartRecognition": false,
+   "episodeTwoNightPost": false,
+   "episodeTwoActOneEnded": false,
+   "episodeTwoAcceptedJobId": null,
+   "nikoShortcutAnswer": null,
+   "unaddressedChildAnswer": null
+  },
+  "memory": [
+   {
+    "id": "io-remembers-blue-packet-sealed",
+    "kind": "delivery-outcome",
+    "subject": "player",
+    "predicate": "delivered-blue-packet",
+    "object": "sealed",
+    "deliveryId": "blue-packet",
+    "sessionId": "session-{{slot}}",
+    "source": "server"
+   },
+   {
+    "id": "io-remembers-kiosk-second-action-done",
+    "kind": "route-attention",
+    "subject": "player",
+    "predicate": "kiosk-second-action",
+    "object": "done",
+    "sessionId": "session-{{slot}}",
+    "source": "server"
+   }
+  ],
+  "npcs": {
+   "orra": {
+    "memory": [],
+    "lastLine": "The lantern is still warm. If you return with intention, I will remember.",
+    "lastLineId": "orra_first_contact",
+    "lastLineMemoryRefs": []
+   }
+  },
+  "save": {
+   "revision": 1,
+   "dirty": false,
+   "ioNextJob": {
+    "parked": true,
+    "beat": "io-next-job",
+    "playerId": "{{player}}",
+    "returnReason": "evasive",
+    "revision": 1,
+    "stampedAt": "2026-11-28T03:49:11.158Z"
+   },
+   "lastPersistedAt": "2026-11-28T03:49:11.158Z",
+   "authority": "server"
+  }
+ },
+ "facts": {
+  "ioMemory": [
+   {
+    "id": "io-remembers-blue-packet-sealed",
+    "kind": "delivery-outcome",
+    "subject": "player",
+    "predicate": "delivered-blue-packet",
+    "object": "sealed",
+    "deliveryId": "blue-packet",
+    "sessionId": "session-{{slot}}",
+    "source": "server"
+   },
+   {
+    "id": "io-remembers-kiosk-second-action-done",
+    "kind": "route-attention",
+    "subject": "player",
+    "predicate": "kiosk-second-action",
+    "object": "done",
+    "sessionId": "session-{{slot}}",
+    "source": "server"
+   }
+  ]
+ }
+}
