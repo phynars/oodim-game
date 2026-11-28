@@ -55,9 +55,12 @@ does not restate their internal input/output shapes. `main.js` retains boot
 and global runtime composition.
 
 `aftersign/main.js` retains served audio behavior, persistence integration,
-and global runtime composition. `src/runtime/runtimeLoop.js` owns browser-frame
-scheduling; `main.js` injects the per-frame callback so scene, DOM, and state
-composition remain explicit at the served entry. `src/packetPressFeedbackRenderer.js` owns the
+and global runtime composition. `src/runtime/authoritativeBootRestore.js` owns
+the authoritative-save read at boot; `main.js` injects its save transport and
+failure reporting, then composes the returned save state into the served
+runtime. `src/runtime/runtimeLoop.js` owns browser-frame scheduling; `main.js`
+injects the per-frame callback so scene, DOM, and state composition remain
+explicit at the served entry. `src/packetPressFeedbackRenderer.js` owns the
 packet-button press-feedback render slice; `main.js` injects its button,
 feedback state transitions, tactile cue, and browser adapters. That boundary
 does not transfer controller ownership back into `index.html`.

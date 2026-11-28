@@ -67,6 +67,7 @@ import {
   clearRecognitionDomFeedback,
 } from "./recognition-dom-feedback.js";
 import { resetRecognitionAfterReload } from "./src/runtime/recognitionReloadReset.js";
+import { loadAuthoritativeSaveAtBoot } from "./src/runtime/authoritativeBootRestore.js";
 import {
   clearAuthoritativeSave,
   readAuthoritativeSave,
@@ -1110,18 +1111,18 @@ const bootstrapPlayerId = resolvePlayerId({
 // player-reachable path to the load-failure notice. The boot tail shows
 // `#loadFailureNotice` with its retry button instead of silently
 // presenting an empty slice as if no save existed.
-let bootLoadFailed = false;
-const stored = await readAuthoritativeSave({
-  slot,
-  playerId: bootstrapPlayerId,
-}).catch((err) => {
-  bootLoadFailed = true;
+const reportBootReadFailure = (err) => {
   // eslint-disable-next-line no-console
   console.error(
     "[aftersign boot] readAuthoritativeSave failed — booting with empty state",
     { slot, playerId: bootstrapPlayerId, error: err?.message ?? String(err) },
   );
-  return null;
+};
+const { stored, bootLoadFailed } = await loadAuthoritativeSaveAtBoot({
+  readAuthoritativeSave,
+  slot,
+  playerId: bootstrapPlayerId,
+  onFailure: reportBootReadFailure,
 });
 
 const startScreen = document.querySelector("#startScreen");
