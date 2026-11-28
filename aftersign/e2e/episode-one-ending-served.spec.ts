@@ -570,9 +570,25 @@ test.describe("Saint Orra red-tag recall", () => {
     await carryRedTagToSaintOrra(page);
 
     const recall = page.locator("#saintOrraRedTagRecall");
-    await expect(recall).toHaveText("You brought the red tag to my door. I remember the courier.");
+    await expect(recall).toHaveText("You turned the tag down at the vigil, and still brought it to my door. I remember the courier.");
     await expect(recall).not.toContainText("at once");
     await expect(recall).not.toContainText("asked what changed");
+  });
+
+  test("does not pair the withheld ending with the unreconciled delivery recall", async ({ page }) => {
+    test.setTimeout(150_000);
+    const slot = `orra-recall-withheld-${Date.now()}`;
+    await page.setViewportSize(PHONE_VIEWPORT);
+    await page.goto(`/aftersign/?slot=${slot}`, { waitUntil: "load" });
+    await waitForVersion(page);
+
+    await runToEnding(page, "sealed", false);
+    await carryRedTagToSaintOrra(page);
+
+    const ending = page.locator('[data-ending-cause="red-tag-withheld"]');
+    await expect(ending).toContainText("The red tag was not accepted");
+    await expect(ending).toContainText("You turned the tag down at the vigil, and still brought it to my door. I remember the courier.");
+    await expect(ending).not.toContainText("You brought the red tag to my door. I remember the courier.");
   });
 });
 

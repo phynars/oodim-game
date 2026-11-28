@@ -17,6 +17,16 @@ export const createTerminalEndingRenderer = ({
     if (state.player.redTagFirstTap === "ask-what-changed") {
       return "You asked what changed before you carried it. I remember the question.";
     }
+    // #3123: with no first tap, a withheld-tag card must not be paired with
+    // the unreconciled neutral delivery line.
+    // Read the cause from story state (stamped by episodeOneEnding.js and
+    // restored by persistence.js), not the DOM, so render order can't skew it.
+    const endingCause = state.story.endingCause
+      ?? document.getElementById("episodeOneEnding")?.querySelector("[data-ending-cause]")?.dataset.endingCause
+      ?? null;
+    if (endingCause === "red-tag-withheld") {
+      return "You turned the tag down at the vigil, and still brought it to my door. I remember the courier.";
+    }
     return "You brought the red tag to my door. I remember the courier.";
   };
 
