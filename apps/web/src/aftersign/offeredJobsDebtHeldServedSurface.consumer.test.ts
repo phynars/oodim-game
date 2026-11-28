@@ -172,6 +172,20 @@ describe("#offeredJobs debt-held served-surface wiring (derives from Io memory +
       });
     });
 
+    it("returns trusted-courier only for the distinct durable courier-history fact", () => {
+      const trustedHistory = [{
+        kind: NPC_MEMORY_FACT_KIND.COURIER_HISTORY,
+        object: "trusted-courier",
+      }];
+      expect(offeredJobsMemoryFromIoMemory(trustedHistory)).toEqual({
+        trustPosture: "trusted-courier",
+      });
+      expect(surfaceOfferIdsFor(trustedHistory)).toEqual([
+        "job-sealed-return",
+        "job-private-ledger",
+      ]);
+    });
+
     it("returns { debtHeld:N } when Io remembers ONLY opened deliveries — N is the count", () => {
       expect(offeredJobsMemoryFromIoMemory([buildOpenedFact("s1")])).toEqual({
         debtHeld: 1,

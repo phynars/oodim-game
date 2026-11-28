@@ -17,6 +17,7 @@ export const PLAYER_MEMORY_FLAG = Object.freeze({
 export const NPC_MEMORY_FACT_KIND = Object.freeze({
   DELIVERY_OUTCOME: "delivery-outcome",
   ROUTE_ATTENTION: "route-attention",
+  COURIER_HISTORY: "courier-history",
 });
 
 export const NPC_MEMORY_PREDICATE = Object.freeze({

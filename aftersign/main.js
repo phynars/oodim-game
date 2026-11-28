@@ -5800,9 +5800,25 @@ const deliverPacket = (source = "hud-button") => {
   const priorRouteAttentionFact = priorRouteAttention
     ? buildSecondActionMemoryFact({ secondAction: priorRouteAttention, sessionId })
     : null;
+  // A trusted courier is earned only after two distinct sealed deliveries
+  // acknowledged at the kiosk. The first delivery's sealed+done facts are
+  // retained for the next delivery as priorRouteAttentionFact and outcome;
+  // the minted courier-history fact then survives later replacement.
+  const priorDeliveryWasTrusted = priorMemory.some(
+    (fact) => fact?.kind === "courier-history" && fact?.object === "trusted-courier",
+  ) || (
+    priorMemory.some((fact) => fact?.kind === "delivery-outcome" && fact?.object === "sealed")
+    && priorMemory.some((fact) => fact?.kind === "route-attention" && fact?.object === "done")
+  );
+  const trustedCourierFact = state.packet.sealed === true
+    && (state.player.secondAction === SECOND_ACTION.DONE || priorRouteAttention === SECOND_ACTION.DONE)
+    && priorDeliveryWasTrusted
+    ? { kind: "courier-history", object: "trusted-courier" }
+    : null;
   state.npcs.io.memory = [
     packetOutcomeFact,
     secondActionFact ?? priorRouteAttentionFact,
+    trustedCourierFact,
   ].filter(Boolean);
   state.save.revision += 1;
   state.save.dirty = true;
