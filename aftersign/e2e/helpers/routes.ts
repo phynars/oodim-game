@@ -8,7 +8,7 @@
 // box; commit that file with the spec.
 import { beat, choice, see, tap, type Route, type RouteStep } from "./route";
 
-export type ReturnReason = "kind" | "blunt";
+export type ReturnReason = "kind" | "evasive" | "blunt";
 export type MaudChoice = "remembered-name" | "archive-decoy";
 export type DoorChoice = "keep-official-record" | "protect-private-lie" | "hang-new-sign";
 export type NikoAnswer = "take" | "refuse";
@@ -101,6 +101,8 @@ export const actOneEnd = (reason: ReturnReason, maud: MaudChoice, door: DoorChoi
 /** The routes the specs use. checkpoints.spec.ts checks each one that has a
  *  committed fixture. Add a route here when a spec starts using it. */
 export const USED_ROUTES: Route[] = [
+  nextJob("kind"),
+  nextJob("evasive"),
   nextJob("blunt"),
   doorChoices("kind", "remembered-name"),
   episodeTwoJob("kind", "remembered-name", "keep-official-record"),

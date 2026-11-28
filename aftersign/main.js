@@ -2677,16 +2677,20 @@ const renderText = () => {
   // Make the return-tone contract explicit at the shared next-job offer: tone
   // changes Io's wording, not the available job controls.
   let ioNextJobToneDisclosure = document.getElementById("ioNextJobToneDisclosure");
-  if (state.scene.beat === "io-next-job" && state.player.returnReason) {
+  const ioNextJobToneLabel = IO_RETURN_TONE_OPTIONS.some(
+    (option) => option.id === state.player.returnReason,
+  )
+    ? state.player.returnReason
+    : null;
+  if (state.scene.beat === "io-next-job" && ioNextJobToneLabel) {
     if (!ioNextJobToneDisclosure) {
       ioNextJobToneDisclosure = document.createElement("p");
       ioNextJobToneDisclosure.id = "ioNextJobToneDisclosure";
       line.insertAdjacentElement("afterend", ioNextJobToneDisclosure);
     }
-    const toneLabel = state.player.returnReason === "kind" ? "kind" : "blunt";
     setTextContentIfChanged(
       ioNextJobToneDisclosure,
-      `Your ${toneLabel} return changes Io's wording, not the job offer.`,
+      `Your ${ioNextJobToneLabel} return changes Io's wording, not the job offer.`,
     );
   } else {
     ioNextJobToneDisclosure?.remove();
