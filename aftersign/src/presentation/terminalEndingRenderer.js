@@ -41,6 +41,22 @@ export const createTerminalEndingRenderer = ({
   const renderSaintOrraEndingRecall = () => {
     const ending = document.getElementById("episodeOneEnding")?.querySelector("[data-ending-id]");
     if (!ending) return;
+
+    // The terminal card replaces the ordinary dialogue surface, so surface
+    // the Orra line the runtime provides where the player can still read it.
+    const vigilRecall = state.npcs.orra.lastLine;
+    let vigilRecallNode = document.getElementById("saintOrraVigilRecall");
+    if (vigilRecall) {
+      if (!vigilRecallNode) {
+        vigilRecallNode = document.createElement("p");
+        vigilRecallNode.id = "saintOrraVigilRecall";
+        ending.appendChild(vigilRecallNode);
+      }
+      setTextContentIfChanged(vigilRecallNode, vigilRecall);
+    } else {
+      vigilRecallNode?.remove();
+    }
+
     let control = document.getElementById("carryRedTagToSaintOrra");
     let recall = document.getElementById("saintOrraRedTagRecall");
     if (state.player.redTagDeliveredToSaintOrra) {
