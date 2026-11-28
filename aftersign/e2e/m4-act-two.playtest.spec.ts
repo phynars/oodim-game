@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { playRoute } from "./helpers/route";
+import { enabledControlKeys, expectRevealedControlsInView, playRoute } from "./helpers/route";
 import { nextJob } from "./helpers/routes";
 
 // M4 PLAYTEST gate (#2705): taps-only, phone viewport, served page.
@@ -36,64 +36,14 @@ function slotUrl(slot: string, playerId: string): string {
   return `/aftersign/?slot=${slot}&player=${playerId}`;
 }
 
-// #3098: every tap that reveals controls must bring them into view with no
-// swipe. Controls are discovered from the page (any enabled, rendered
-// button), never from a list of names, so a reveal added later is covered.
-// Before each tap, every enabled button that was not on screen-state at the
-// previous tap must lie fully inside the phone viewport. Playwright's tap()
-// auto-scrolls its target, so this check runs BEFORE the tap.
+// #3098 / #3128: every tap that reveals controls must bring them into view
+// with no swipe. The check lives once, in helpers/route.ts
+// (expectRevealedControlsInView, also the `revealedInView` play option).
 const seenControls = new WeakMap<Page, Set<string>>();
 
-async function enabledControlKeys(page: Page): Promise<string[]> {
-  return page.evaluate(() =>
-    Array.from(document.querySelectorAll("button:not([disabled])"))
-      .filter((el) => {
-        const r = el.getBoundingClientRect();
-        return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden";
-      })
-      .map((el) => {
-        const attrs = Array.from(el.attributes)
-          .filter((a) => a.name === "id" || a.name.startsWith("data-"))
-          .filter((a) => !/feel|state|press|armed/i.test(a.name))
-          .map((a) => `${a.name}=${a.value}`)
-          .sort()
-          .join("&");
-        return `${attrs}|${(el.textContent || "").trim()}`;
-      }),
-  );
-}
-
-async function expectRevealedControlsInView(page: Page): Promise<void> {
-  const seen = seenControls.get(page);
-  if (!seen) return;
-  await expect
-    .poll(
-      async () =>
-        page.evaluate((seenKeys) => {
-          const seenSet = new Set(seenKeys);
-          const out: string[] = [];
-          for (const el of Array.from(document.querySelectorAll("button:not([disabled])"))) {
-            const r = el.getBoundingClientRect();
-            if (r.width === 0 || r.height === 0 || getComputedStyle(el).visibility === "hidden") continue;
-            const attrs = Array.from(el.attributes)
-              .filter((a) => a.name === "id" || a.name.startsWith("data-"))
-              .filter((a) => !/feel|state|press|armed/i.test(a.name))
-              .map((a) => `${a.name}=${a.value}`)
-              .sort()
-              .join("&");
-            const key = `${attrs}|${(el.textContent || "").trim()}`;
-            if (seenSet.has(key)) continue;
-            if (r.top < -1 || r.bottom > window.innerHeight + 1) out.push(`${key} @ ${Math.round(r.top)}..${Math.round(r.bottom)}`);
-          }
-          return out;
-        }, [...seen]),
-      { message: "every newly revealed control is fully inside the phone viewport before the next tap", timeout: WAIT_MS },
-    )
-    .toEqual([]);
-}
-
 async function tapRevealed(page: Page, target: ReturnType<Page["locator"]>): Promise<void> {
-  await expectRevealedControlsInView(page);
+  const seen = seenControls.get(page);
+  if (seen) await expectRevealedControlsInView(page, seen);
   seenControls.set(page, new Set(await enabledControlKeys(page)));
   await target.tap();
 }
