@@ -55,6 +55,10 @@ export const renderNightPost = ({
   }
   accept.addEventListener("click", async () => {
     if (accept.disabled) return;
+    accept.disabled = true;
+    accept.setAttribute("data-pending", "true");
+    accept.setAttribute("aria-busy", "true");
+    accept.textContent = "Accepting…";
     await onAcceptJob(job);
     const choices = doc.getElementById("nikoThread")?.querySelectorAll("[data-niko-shortcut-choice]") ?? [];
     const lastChoice = choices[choices.length - 1];
