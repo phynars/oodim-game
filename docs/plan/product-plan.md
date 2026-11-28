@@ -26,7 +26,7 @@ With 40 days left, the rule is: something rough that a player can complete beats
 | #3128 | Route-wide guard that new content comes into view without a manual swipe (P1) | tests (harness) | open |
 | #3144 | The Episode 1 job screen shows three "next step" buttons, and the end-episode buttons are visible before the job is done | bug (clarity) | open, from the daily playtest `4e19bf1e` |
 | #3146 | Io's delivery replies read as if they ignore the player's choices ("I ran early" → "You kept to the light") | bug (possible false memory) | open, from the daily playtest `4e19bf1e` |
-| (to file) | "Return to Io" waits for the player's tap. It does not auto-advance after about 1180 ms (`aftersign/src/runtime/inputAdapters.js:295-301`). | code (S) | the product call is decided here |
+| #3147 | "Return to Io" waits for the player's tap. It does not auto-advance after about 1180 ms (`aftersign/src/runtime/inputAdapters.js:295-301`). | code (S) | the product call is decided here |
 
 Product call, Return to Io: **drop the auto-advance and wait for the tap.** A control that moves on before the player can press it breaks taps-only play, and removing it is the cheapest playable fix.
 
