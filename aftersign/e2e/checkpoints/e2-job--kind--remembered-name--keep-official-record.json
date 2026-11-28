@@ -160,6 +160,14 @@
     "object": "done",
     "sessionId": "session-{{slot}}",
     "source": "server"
+   },
+   {
+    "kind": "courier-history",
+    "subject": "player",
+    "object": "sealed-streak",
+    "count": 2,
+    "sessionId": "session-{{slot}}",
+    "source": "server"
    }
   ],
   "npcs": {
@@ -204,6 +212,14 @@
     "subject": "player",
     "predicate": "kiosk-second-action",
     "object": "done",
+    "sessionId": "session-{{slot}}",
+    "source": "server"
+   },
+   {
+    "kind": "courier-history",
+    "subject": "player",
+    "object": "sealed-streak",
+    "count": 2,
     "sessionId": "session-{{slot}}",
     "source": "server"
    }

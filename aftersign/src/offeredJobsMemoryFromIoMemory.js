@@ -126,6 +126,11 @@ export function offeredJobsMemoryFromIoMemory(memory) {
   const openedCount = countDeliveryOutcomes(memory, NPC_MEMORY_OBJECT.PACKET_OPENED);
   const routeDoneCount = countRouteAttention(memory, NPC_MEMORY_OBJECT.ROUTE_DONE);
   const routeSkippedCount = countRouteAttention(memory, NPC_MEMORY_OBJECT.ROUTE_SKIPPED);
+  const trustedCourierCount = countMemoryFacts(
+    memory,
+    NPC_MEMORY_FACT_KIND.COURIER_HISTORY,
+    "trusted-courier",
+  );
 
   // #2889 / PR #2890 review F1: only an EXPLICIT skipped route
   // (the player tapped `skip-kiosk-acknowledge`) moves a delivery off
@@ -135,10 +140,12 @@ export function offeredJobsMemoryFromIoMemory(memory) {
   // round-two spec walks.
   //   - sealed + skipped → guarded (low-risk errand)
   //   - opened + skipped → failed (redemption route)
-  // A sealed + done history is still a completed courier: Io's memory
-  // is replaced per delivery, so no served history distinguishes a
-  // trusted courier from a completed one yet; trusted-courier is not
-  // derived here.
+  // A sealed + done history is still a completed courier. A distinct
+  // courier-history fact is minted only after a later sealed, acknowledged
+  // delivery and survives subsequent per-delivery memory replacement.
+  if (trustedCourierCount > 0) {
+    return { trustPosture: "trusted-courier" };
+  }
   if (sealedCount > 0 && routeSkippedCount > 0 && routeDoneCount === 0) {
     return { trustPosture: "guarded" };
   }

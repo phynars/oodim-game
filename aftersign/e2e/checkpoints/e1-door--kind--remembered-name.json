@@ -104,7 +104,7 @@
    "delivered": true,
    "route": "blue rainline",
    "sealed": true,
-   "deliveredAt": "2026-11-27T17:16:16.784Z"
+   "deliveredAt": "2026-11-28T06:09:18.006Z"
   },
   "delivery": {
    "id": "red-tag",
@@ -145,6 +145,14 @@
     "object": "done",
     "sessionId": "session-{{slot}}",
     "source": "server"
+   },
+   {
+    "kind": "courier-history",
+    "subject": "player",
+    "object": "sealed-streak",
+    "count": 2,
+    "sessionId": "session-{{slot}}",
+    "source": "server"
    }
   ],
   "npcs": {
@@ -165,9 +173,9 @@
     "playerId": "{{player}}",
     "returnReason": "kind",
     "revision": 2,
-    "stampedAt": "2026-11-27T17:16:20.125Z"
+    "stampedAt": "2026-11-28T06:09:21.499Z"
    },
-   "lastPersistedAt": "2026-11-27T17:16:20.125Z",
+   "lastPersistedAt": "2026-11-28T06:09:21.499Z",
    "authority": "server"
   }
  },
@@ -189,6 +197,14 @@
     "subject": "player",
     "predicate": "kiosk-second-action",
     "object": "done",
+    "sessionId": "session-{{slot}}",
+    "source": "server"
+   },
+   {
+    "kind": "courier-history",
+    "subject": "player",
+    "object": "sealed-streak",
+    "count": 2,
     "sessionId": "session-{{slot}}",
     "source": "server"
    }
