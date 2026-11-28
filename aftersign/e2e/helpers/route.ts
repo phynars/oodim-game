@@ -90,14 +90,69 @@ const swap = (value: unknown, from: { player: string; slot: string }, to: { play
 };
 
 /** `inViewport`: each tapped control must be wholly inside the viewport before
- *  its tap, as a phone player needs it with no swipe (applies when played). */
-export type PlayOptions = { inViewport?: boolean };
+ *  its tap, as a phone player needs it with no swipe (applies when played).
+ *  `revealedInView`: before each tap, and at the route's end, every enabled
+ *  control that was not on screen at the previous tap (discovered from the
+ *  page, never from a list of names) must be wholly inside the viewport
+ *  (#3098 / #3128). Playwright's tap() auto-scrolls its target, so the check
+ *  runs BEFORE the tap. */
+export type PlayOptions = { inViewport?: boolean; revealedInView?: boolean };
+
+// Every enabled, rendered button as "<key>\u0000<top>\u0000<bottom>". The key
+// is its id and data-* attributes (minus ones that change with press/feel/
+// tap-confirm/feedback state) and its text. Runs in the page: it must not
+// close over anything.
+function controlKeysInPage(): string[] {
+  return Array.from(document.querySelectorAll("button:not([disabled])"))
+    .filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden";
+    })
+    .map((el) => {
+      const attrs = Array.from(el.attributes)
+        .filter((a) => a.name === "id" || a.name.startsWith("data-"))
+        .filter((a) => !/feel|state|press|armed|confirm|feedback/i.test(a.name))
+        .map((a) => `${a.name}=${a.value}`)
+        .sort()
+        .join("&");
+      const r = el.getBoundingClientRect();
+      return `${attrs}|${(el.textContent || "").trim()}\u0000${r.top}\u0000${r.bottom}`;
+    });
+}
+
+/** Keys of every enabled, rendered button on the page now. */
+export async function enabledControlKeys(page: Page): Promise<string[]> {
+  return (await page.evaluate(controlKeysInPage)).map((k) => k.split("\u0000")[0]);
+}
+
+/** Fails unless every enabled control not in `seen` lies wholly inside the
+ *  viewport (1 px slack). Names each offender with its top..bottom. */
+export async function expectRevealedControlsInView(page: Page, seen: Set<string>, context = ""): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const height = await page.evaluate(() => window.innerHeight);
+        return (await page.evaluate(controlKeysInPage))
+          .map((k) => k.split("\u0000"))
+          .filter(([key]) => !seen.has(key))
+          .filter(([, top, bottom]) => Number(top) < -1 || Number(bottom) > height + 1)
+          .map(([key, top, bottom]) => `${key} @ ${Math.round(Number(top))}..${Math.round(Number(bottom))}`);
+      },
+      { message: `every newly revealed control is fully inside the phone viewport before the next tap${context}`, timeout: WAIT_MS },
+    )
+    .toEqual([]);
+}
 
 async function runSteps(page: Page, steps: RouteStep[], options: PlayOptions = {}): Promise<void> {
+  let seen: Set<string> | null = null;
   for (const s of steps) {
     if ("tap" in s) {
       const control = page.locator(s.tap);
       await expect(control, `route step tap ${s.tap}`).toBeVisible({ timeout: WAIT_MS });
+      if (options.revealedInView) {
+        if (seen) await expectRevealedControlsInView(page, seen, ` (before route step tap ${s.tap})`);
+        seen = new Set(await enabledControlKeys(page));
+      }
       if (options.inViewport) await expect(control, `route step tap ${s.tap} is wholly in view`).toBeInViewport({ ratio: 1 });
       await control.tap();
     } else if ("beat" in s) {
@@ -106,6 +161,7 @@ async function runSteps(page: Page, steps: RouteStep[], options: PlayOptions = {
       await expect(page.locator(s.see), `route step see ${s.see}`).toBeVisible({ timeout: WAIT_MS });
     }
   }
+  if (options.revealedInView && seen) await expectRevealedControlsInView(page, seen, " (at the route's end)");
 }
 
 /** The steps after the last tap: what must be on screen at the route's end. */
