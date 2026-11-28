@@ -1064,6 +1064,10 @@ const params = new URLSearchParams(window.location.search);
 const slot = params.get("slot") || "local";
 const storageKey = `aftersign:kiosk-slice:${slot}`;
 const sessionId = `session-${slot}`;
+// #3120: sealed + acknowledged deliveries in a row that earn Io's
+// trusted-courier offers. Kept past the deliveries the Episode 1 and
+// round-two routes play, so those keep the completed offer set.
+const TRUSTED_COURIER_SEALED_STREAK = 4;
 const breakMode = window.__FLAGSHIP_BREAK_MODE || params.get("breakMode") || "";
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -5800,25 +5804,38 @@ const deliverPacket = (source = "hud-button") => {
   const priorRouteAttentionFact = priorRouteAttention
     ? buildSecondActionMemoryFact({ secondAction: priorRouteAttention, sessionId })
     : null;
-  // A trusted courier is earned only after two distinct sealed deliveries
-  // acknowledged at the kiosk. The first delivery's sealed+done facts are
-  // retained for the next delivery as priorRouteAttentionFact and outcome;
-  // the minted courier-history fact then survives later replacement.
-  const priorDeliveryWasTrusted = priorMemory.some(
+  // #3120: a trusted courier is earned by a STREAK of sealed deliveries
+  // acknowledged at the kiosk — TRUSTED_COURIER_SEALED_STREAK of them, past
+  // the two-delivery sealed+done history that stays on the completed set
+  // (PR #2890 F1). Io's memory is replaced per delivery, so the streak is
+  // carried in its own courier-history fact; an opened packet or a skipped
+  // route resets it. Once minted, trusted-courier survives later replacement.
+  const priorTrusted = priorMemory.some(
     (fact) => fact?.kind === "courier-history" && fact?.object === "trusted-courier",
-  ) || (
-    priorMemory.some((fact) => fact?.kind === "delivery-outcome" && fact?.object === "sealed")
-    && priorMemory.some((fact) => fact?.kind === "route-attention" && fact?.object === "done")
   );
-  const trustedCourierFact = state.packet.sealed === true
-    && (state.player.secondAction === SECOND_ACTION.DONE || priorRouteAttention === SECOND_ACTION.DONE)
-    && priorDeliveryWasTrusted
-    ? { kind: "courier-history", object: "trusted-courier" }
-    : null;
+  const priorStreakFact = priorMemory.find(
+    (fact) => fact?.kind === "courier-history" && fact?.object === "sealed-streak",
+  );
+  const priorWasSealedAcknowledged = priorMemory.some(
+    (fact) => fact?.kind === "delivery-outcome" && fact?.object === "sealed",
+  ) && priorRouteAttention === SECOND_ACTION.DONE;
+  const priorStreak = Number.isFinite(priorStreakFact?.count)
+    ? priorStreakFact.count
+    : (priorWasSealedAcknowledged ? 1 : 0);
+  const thisDeliveryRouteAttention = state.player.secondAction ?? priorRouteAttention;
+  const thisDeliverySealedAcknowledged = state.packet.sealed === true
+    && thisDeliveryRouteAttention === SECOND_ACTION.DONE;
+  const sealedStreak = thisDeliverySealedAcknowledged ? priorStreak + 1 : 0;
+  const trustedCourier = priorTrusted || sealedStreak >= TRUSTED_COURIER_SEALED_STREAK;
+  const courierHistoryFact = trustedCourier
+    ? { kind: "courier-history", subject: "player", object: "trusted-courier", sessionId, source: "server" }
+    : sealedStreak >= 2
+      ? { kind: "courier-history", subject: "player", object: "sealed-streak", count: sealedStreak, sessionId, source: "server" }
+      : null;
   state.npcs.io.memory = [
     packetOutcomeFact,
     secondActionFact ?? priorRouteAttentionFact,
-    trustedCourierFact,
+    courierHistoryFact,
   ].filter(Boolean);
   state.save.revision += 1;
   state.save.dirty = true;

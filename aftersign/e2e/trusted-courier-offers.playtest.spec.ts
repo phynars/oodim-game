@@ -40,8 +40,15 @@ test.describe("AFTERSIGN trusted-courier offers", () => {
       await page.waitForFunction(() => (window as any).__game?.scene?.ready === true, undefined, { timeout: WAIT_MS });
       await waitForBeat(page, "packet-offered");
 
+      test.setTimeout(180_000);
+      // Two and three sealed, acknowledged deliveries stay on the completed
+      // set (PR #2890 F1); only the fourth in a row earns trusted-courier.
       await playSealedAcknowledgedDelivery(page, "job-safe-delivery");
-      await expect(page.locator("#job-offer-job-night-transfer")).toBeVisible({ timeout: WAIT_MS });
+      await playSealedAcknowledgedDelivery(page, "job-night-transfer");
+      await expect(page.locator("#job-offer-job-signed-receipt")).toBeVisible({ timeout: WAIT_MS });
+      await expect(page.locator("#job-offer-job-sealed-return")).toHaveCount(0);
+      await playSealedAcknowledgedDelivery(page, "job-signed-receipt");
+      await expect(page.locator("#job-offer-job-sealed-return")).toHaveCount(0);
       await playSealedAcknowledgedDelivery(page, "job-night-transfer");
 
       const offer = page.locator(`#job-offer-${jobId}`);
