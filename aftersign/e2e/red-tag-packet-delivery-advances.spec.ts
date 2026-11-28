@@ -48,46 +48,16 @@ async function waitForBeat(page: Page, beat: string): Promise<void> {
 
 type ReturnBeat = "io-return-recognition" | "return-tone-choice";
 
-// "Return to Io" lives on #deliverButton at `packet-delivered`, and
-// deliverPacket()'s ~1180ms auto-advance (kept by #3068) relabels that SAME
-// button "Blunt return" in place. On a loaded CI runner Playwright's
-// actionability wait before the tap can outlast that timer, so the finger
-// lands on "Blunt return" — a legal tone commit — instead of "Return to Io".
-// Record the label actually under the finger at pointerdown and assert the
-// beat THAT label leads to, so the spec checks the game, not the runner's
-// speed. Returns the beat reached.
+// The delivery receipt remains visible until a player taps it. Waiting past
+// the recognition timer proves that the visible control is not auto-replaced.
 async function tapReturnToIo(page: Page): Promise<ReturnBeat> {
   const deliverButton = page.locator("#deliverButton");
   await expect(deliverButton).toHaveText("Return to Io");
-  await page.evaluate(() => {
-    const button = document.getElementById("deliverButton")!;
-    window.__returnSurfaceDownLabel = undefined;
-    button.addEventListener(
-      "pointerdown",
-      () => {
-        window.__returnSurfaceDownLabel = button.textContent?.trim() ?? "";
-      },
-      { capture: true, once: true },
-    );
-  });
+  await page.waitForTimeout(1_300);
+  await expect(deliverButton).toHaveText("Return to Io");
   await tap(page, "#deliverButton");
-  const downLabel = await page.evaluate(() => window.__returnSurfaceDownLabel);
-  if (downLabel === "Return to Io") {
-    // The tap was "Return to Io" (or the timer moved the beat there while
-    // the finger was down; the #2181 settle gate refuses that stroke as a
-    // tone). Either way Io's recognition beat is what the player sees.
-    await waitForBeat(page, "io-return-recognition");
-    return "io-return-recognition";
-  }
-  expect(downLabel, "tap landed on the auto-advanced tone control").toBe("Blunt return");
-  // The timer won: the tap struck the visible "Blunt return" tone. It
-  // commits, unless the #2174 settle gate refused it inside its 120ms
-  // window, which leaves Io's recognition beat up. Let the commit land.
-  // allowed: a refused stroke leaves no state change to wait on, so the settle window must elapse
-  await page.waitForTimeout(400);
-  const beat = (await snapshot(page)).scene.beat;
-  expect(["io-return-recognition", "return-tone-choice"]).toContain(beat);
-  return beat as ReturnBeat;
+  await waitForBeat(page, "io-return-recognition");
+  return "io-return-recognition";
 }
 
 // From Io's recognition beat, strike the blunt tone; a no-op when the

@@ -5834,15 +5834,8 @@ const deliverPacket = (source = "hud-button") => {
     if (!state.interaction || typeof state.interaction !== "object") {
       state.interaction = {};
     }
-    // #3068: "Return to Io" is a real tap target at packet-delivered. When
-    // the player taps it before this timer fires, `advance()` has already
-    // moved on (often to a tone choice by now); promoting the beat here
-    // again would snap the screen back to Io's recall. Still publish the
-    // memory beat below, but only advance from `packet-delivered`.
-    const stillAtDelivery = state.scene.beat === "packet-delivered";
-    if (stillAtDelivery) {
-      state.interaction.recognitionEnteredAt = performance.now();
-    }
+    // The delivery receipt is a player-owned stop. This timer records the
+    // recognition data, but must not replace "Return to Io" before its tap.
     const beatEndedAt = performance.now();
     const durableOutcome = state.npcs.io.memory.find((fact) => fact.kind === "delivery-outcome")?.object === "opened" ? "opened" : "sealed";
     const secondAction = secondActionFromMemory(state.npcs.io.memory);
@@ -5870,18 +5863,9 @@ const deliverPacket = (source = "hud-button") => {
         : "io_return_packet_opened",
     };
     markStateDirty();
-    if (stillAtDelivery) {
-      setBeat("io-return-recognition");
-    } else {
-      publishState();
-    }
-    // #2336: the only durable write on this path used to be the
-    // persistAuthoritative() below, which fires at `packet-delivered`
-    // BEFORE this 1180ms auto-advance. A reload while Io was already
-    // speaking the recognition line restored the stale
-    // `packet-delivered` beat (and armed the returning boot line over
-    // it). Persist the advanced beat so reload stays on
-    // `io-return-recognition`.
+    publishState();
+    // Persist the recorded recognition data while retaining the delivery
+    // receipt; `advance()` owns the later transition after the player's tap.
     void persistAuthoritative({ dirty: true });
   }, 1180);
   void persistAuthoritative({ dirty: true });
