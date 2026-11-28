@@ -34,7 +34,32 @@ export const createTerminalEndingRenderer = ({
     maudEntry.dataset.orraPaybackAction = "carry-name-to-bell-archive";
     maudEntry.style.pointerEvents = "auto";
     maudEntry.textContent = "Carry the name to the Bell Archive";
-    maudEntry.addEventListener("click", () => choose("carry-name-to-bell-archive"));
+    // The handoff starts an async restore/render path that replaces this scene.
+    // Show the pending state first, then call choose on the next animation frame
+    // so the pending state paints. choose is called directly; no synthetic click
+    // goes to the disabled button, because browsers handle that differently.
+    maudEntry.addEventListener("click", () => {
+      if (maudEntry.disabled) return;
+      maudEntry.disabled = true;
+      maudEntry.setAttribute("data-pending", "true");
+      maudEntry.setAttribute("aria-busy", "true");
+      maudEntry.textContent = "Opening Bell Archive…";
+      const restore = () => {
+        maudEntry.disabled = false;
+        maudEntry.removeAttribute("data-pending");
+        maudEntry.removeAttribute("aria-busy");
+        maudEntry.textContent = "Carry the name to the Bell Archive";
+      };
+      requestAnimationFrame(() => {
+        try {
+          const result = choose("carry-name-to-bell-archive");
+          if (result && typeof result.catch === "function") result.catch(restore);
+        } catch (error) {
+          restore();
+          throw error;
+        }
+      });
+    });
     host.append(maudEntry);
   };
 
