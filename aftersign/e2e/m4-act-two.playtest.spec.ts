@@ -279,10 +279,36 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       );
       await expect(maudEntry).toBeVisible({ timeout: WAIT_MS });
       await expect(maudEntry).toHaveText("Carry the name to the Bell Archive");
+      // The pending state can last a single frame before the scene is replaced,
+      // so record it with a MutationObserver instead of polling for it.
+      await maudEntryState.evaluate((button) => {
+        const w = window as unknown as { __maudPendingSeen?: boolean };
+        w.__maudPendingSeen = false;
+        const check = () => {
+          const b = button as HTMLButtonElement;
+          if (
+            b.disabled &&
+            b.getAttribute("aria-busy") === "true" &&
+            b.textContent === "Opening Bell Archive…"
+          ) {
+            w.__maudPendingSeen = true;
+          }
+        };
+        new MutationObserver(check).observe(button, {
+          attributes: true,
+          childList: true,
+          characterData: true,
+          subtree: true,
+        });
+      });
       await tapRevealed(page, maudEntry);
-      await expect(maudEntryState).toHaveText("Opening Bell Archive…");
-      await expect(maudEntryState).toBeDisabled();
-      await expect(maudEntryState).toHaveAttribute("aria-busy", "true");
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () => (window as unknown as { __maudPendingSeen?: boolean }).__maudPendingSeen,
+          ),
+        )
+        .toBe(true);
 
       const maud = page.locator('[data-beat="maud-bell-archive"]');
       await expect(maud).toBeVisible({ timeout: WAIT_MS });

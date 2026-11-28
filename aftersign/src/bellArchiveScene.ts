@@ -29,32 +29,6 @@ export const BELL_ARCHIVE_OUTCOME_ATTRIBUTE = "data-bell-archive-outcome";
 const BEAT_ATTR = "data-beat";
 const MAUD_BEAT_ID = "maud-bell-archive";
 const NAME_CHOICE_ATTR = "data-maud-name-choice";
-const ORRA_ARCHIVE_ACTION = 'button[data-orra-payback-action="carry-name-to-bell-archive"]';
-
-// The handoff starts an async restore/render path owned by the app shell.
-// Defer its app-shell click by one animation frame so this visible pending
-// state paints before the scene is replaced.
-const replayedArchiveActions = new WeakSet<HTMLButtonElement>();
-if (typeof document !== "undefined") {
-  document.addEventListener("click", (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    const button = target.closest(ORRA_ARCHIVE_ACTION);
-    if (!(button instanceof HTMLButtonElement)) return;
-    if (replayedArchiveActions.delete(button)) return;
-    if (button.disabled) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    button.disabled = true;
-    button.setAttribute("data-pending", "true");
-    button.setAttribute("aria-busy", "true");
-    button.textContent = "Opening Bell Archive…";
-    requestAnimationFrame(() => {
-      replayedArchiveActions.add(button);
-      button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    });
-  }, { capture: true });
-}
 
 /** The live choice set: the sealed name plus two archive decoys. */
 export function bellArchiveChoices(sealedName: string): ReadonlyArray<BellArchiveChoice> {
