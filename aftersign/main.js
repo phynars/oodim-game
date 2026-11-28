@@ -2674,6 +2674,23 @@ const renderText = () => {
       line.replaceChildren(...nodes);
     }
   }
+  // Make the return-tone contract explicit at the shared next-job offer: tone
+  // changes Io's wording, not the available job controls.
+  let ioNextJobToneDisclosure = document.getElementById("ioNextJobToneDisclosure");
+  if (state.scene.beat === "io-next-job" && state.player.returnReason) {
+    if (!ioNextJobToneDisclosure) {
+      ioNextJobToneDisclosure = document.createElement("p");
+      ioNextJobToneDisclosure.id = "ioNextJobToneDisclosure";
+      line.insertAdjacentElement("afterend", ioNextJobToneDisclosure);
+    }
+    const toneLabel = state.player.returnReason === "kind" ? "kind" : "blunt";
+    setTextContentIfChanged(
+      ioNextJobToneDisclosure,
+      `Your ${toneLabel} return changes Io's wording, not the job offer.`,
+    );
+  } else {
+    ioNextJobToneDisclosure?.remove();
+  }
   // An ending is terminal for this episode; the renderer hides only its
   // supplied story controls and restores those exact nodes after Start fresh.
   if (renderTerminalEndingControls()) return;
