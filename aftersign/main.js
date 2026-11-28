@@ -1111,17 +1111,18 @@ const bootstrapPlayerId = resolvePlayerId({
 // player-reachable path to the load-failure notice. The boot tail shows
 // `#loadFailureNotice` with its retry button instead of silently
 // presenting an empty slice as if no save existed.
+const reportBootReadFailure = (err) => {
+  // eslint-disable-next-line no-console
+  console.error(
+    "[aftersign boot] readAuthoritativeSave failed — booting with empty state",
+    { slot, playerId: bootstrapPlayerId, error: err?.message ?? String(err) },
+  );
+};
 const { stored, bootLoadFailed } = await loadAuthoritativeSaveAtBoot({
   readAuthoritativeSave,
   slot,
   playerId: bootstrapPlayerId,
-  onFailure: (err) => {
-    // eslint-disable-next-line no-console
-    console.error(
-      "[aftersign boot] readAuthoritativeSave failed — booting with empty state",
-      { slot, playerId: bootstrapPlayerId, error: err?.message ?? String(err) },
-    );
-  },
+  onFailure: reportBootReadFailure,
 });
 
 const startScreen = document.querySelector("#startScreen");

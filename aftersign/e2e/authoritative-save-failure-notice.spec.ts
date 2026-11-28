@@ -58,10 +58,19 @@ test.describe("AFTERSIGN authoritative save failure notice", () => {
     // The player comes back (a real page reload) while the save service is
     // down: the boot read fails and the notice must say so.
     failReads = true;
+    const bootFailureReports: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error" && message.text().includes("[aftersign boot] readAuthoritativeSave failed")) {
+        bootFailureReports.push(message.text());
+      }
+    });
     await page.reload({ waitUntil: "load" });
 
     const notice = page.locator("#loadFailureNotice");
     await expect(notice).toBeVisible({ timeout: WAIT_MS });
+    // The extracted boot-restore module reports the failed read through the
+    // injected failure reporter before the notice renders.
+    expect(bootFailureReports.length).toBeGreaterThan(0);
     await expect(notice).toHaveAttribute("role", "alert");
     await expect(notice).toContainText("Unable to load saved progress");
     await expect(page.locator("#retryLoadSave")).toHaveText("Retry loading save");
