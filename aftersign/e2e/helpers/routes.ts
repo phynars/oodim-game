@@ -12,6 +12,7 @@ export type ReturnReason = "kind" | "evasive" | "blunt";
 export type MaudChoice = "remembered-name" | "archive-decoy";
 export type DoorChoice = "keep-official-record" | "protect-private-lie" | "hang-new-sign";
 export type NikoAnswer = "take" | "refuse";
+export type VigilChoice = "light-vigil" | "spare-vigil";
 
 const firstDelivery = (reason: ReturnReason): RouteStep[] => [
   beat("packet-offered"),
@@ -68,6 +69,25 @@ const toActOneEnd = (reason: ReturnReason, maud: MaudChoice, door: DoorChoice, n
   see('[data-ending-id="episode-two-act-one"]'),
 ];
 
+// Episode 1 ends at Io's next-job beat by either vigil choice (main.js
+// handles light-vigil / spare-vigil by committing the Episode 1 ending card).
+const toEpisodeOneVigilEnd = (reason: ReturnReason, vigil: VigilChoice): RouteStep[] => [
+  ...firstDelivery(reason),
+  choice(vigil),
+  see("#episodeOneEnding [data-ending-id]"),
+];
+
+// Episode 2 Act II: Continue to Act II on the Act I card, then the Child's
+// question answered; the chapter's to-be-continued line is on screen.
+const toActTwoEnd = (reason: ReturnReason, maud: MaudChoice, door: DoorChoice, niko: NikoAnswer): RouteStep[] => [
+  ...toActOneEnd(reason, maud, door, niko),
+  tap('[data-episode-two-next-step="act-two-continuation"]'),
+  tap(
+    `[data-act-two-opening-id="episode-two-act-two-${niko}-opening"] button:has-text("${niko === "take" ? "I know where to begin" : "I don't know."}")`,
+  ),
+  see('[data-act-two-continuation="to-be-continued"]'),
+];
+
 /** Episode 1, first delivery returned with `reason`: Io offers the next job. */
 export const nextJob = (reason: ReturnReason): Route => ({
   name: `e1-next-job--${reason}`,
@@ -98,6 +118,18 @@ export const actOneEnd = (reason: ReturnReason, maud: MaudChoice, door: DoorChoi
   steps: toActOneEnd(reason, maud, door, niko),
 });
 
+/** Episode 1 is over by `vigil` at Io's next-job beat: its ending card is on screen. */
+export const episodeOneVigilEnd = (reason: ReturnReason, vigil: VigilChoice): Route => ({
+  name: `e1-vigil-end--${reason}--${vigil}`,
+  steps: toEpisodeOneVigilEnd(reason, vigil),
+});
+
+/** Episode 2 Act II is over with the Child answered: the chapter is complete. */
+export const actTwoEnd = (reason: ReturnReason, maud: MaudChoice, door: DoorChoice, niko: NikoAnswer): Route => ({
+  name: `e2-act-two-end--${reason}--${maud}--${door}--${niko}`,
+  steps: toActTwoEnd(reason, maud, door, niko),
+});
+
 /** The routes the specs use. checkpoints.spec.ts checks each one that has a
  *  committed fixture. Add a route here when a spec starts using it. */
 export const USED_ROUTES: Route[] = [
@@ -107,4 +139,8 @@ export const USED_ROUTES: Route[] = [
   doorChoices("kind", "remembered-name"),
   episodeTwoJob("kind", "remembered-name", "keep-official-record"),
   episodeTwoJob("blunt", "archive-decoy", "keep-official-record"),
+  episodeOneVigilEnd("kind", "light-vigil"),
+  episodeOneVigilEnd("kind", "spare-vigil"),
+  actTwoEnd("blunt", "archive-decoy", "keep-official-record", "take"),
+  actTwoEnd("blunt", "archive-decoy", "keep-official-record", "refuse"),
 ];

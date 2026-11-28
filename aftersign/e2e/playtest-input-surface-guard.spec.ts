@@ -11,6 +11,11 @@ const PLAYED_ACCEPTANCE_SPEC_PATTERN = /(?:playtest|played).*\.spec\.ts$/;
 const BLOCK_COMMENT_PATTERN = /\/\*[\s\S]*?\*\//g;
 const LINE_COMMENT_PATTERN = /^\s*\/\/.*$/gm;
 const PLAYER_EVENT_PATTERN = /\.(?:click|tap|press|keyboard\.press|mouse\.click|touchscreen\.tap)\s*\(/;
+// helpers/route.ts plays a route by tapping each step's control
+// (`control.tap()`); a spec that plays through it uses visible player input.
+// The helper itself is held to the same rules below.
+const ROUTE_HELPER_PATH = join(E2E_DIR, "helpers", "route.ts");
+const ROUTE_HELPER_CALL_PATTERN = /\b(?:playSteps|playRoute)\s*\(/;
 const INTERNAL_INPUT_PATTERNS = [
   /window\.__game\.input\b/,
   /__game\.input\b/,
@@ -33,11 +38,21 @@ test("played acceptance specs use visible player input and do not drive choices 
     const internalInputOffenders = INTERNAL_INPUT_PATTERNS.filter((pattern) =>
       pattern.test(source),
     ).map((pattern) => `${basename(filePath)} drives through ${pattern}`);
-    const visibleInputOffenders = PLAYER_EVENT_PATTERN.test(source)
+    const visibleInputOffenders = PLAYER_EVENT_PATTERN.test(source) || ROUTE_HELPER_CALL_PATTERN.test(source)
       ? []
       : [`${basename(filePath)} has no visible player event (.tap/.click/.press)`];
     return [...internalInputOffenders, ...visibleInputOffenders];
   });
 
-  expect(offenders).toEqual([]);
+  const helperSource = readFileSync(ROUTE_HELPER_PATH, "utf8")
+    .replace(BLOCK_COMMENT_PATTERN, "")
+    .replace(LINE_COMMENT_PATTERN, "");
+  const helperOffenders = [
+    ...INTERNAL_INPUT_PATTERNS.filter((pattern) => pattern.test(helperSource)).map(
+      (pattern) => `helpers/route.ts drives through ${pattern}`,
+    ),
+    ...(PLAYER_EVENT_PATTERN.test(helperSource) ? [] : ["helpers/route.ts has no visible player event (.tap/.click/.press)"]),
+  ];
+
+  expect([...offenders, ...helperOffenders]).toEqual([]);
 });
