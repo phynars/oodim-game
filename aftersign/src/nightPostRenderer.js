@@ -23,10 +23,12 @@ export const renderNightPost = ({
   host.setAttribute("data-continuation", "night-post");
   const heading = doc.createElement("strong");
   heading.textContent = "Night Post";
-  const recall = doc.createElement("p");
-  recall.setAttribute("data-night-post-door-choice", doorChoice ?? "");
-  recall.textContent = `Io remembers the door you chose: ${doorLabel ?? ""}.`;
-  host.append(heading, recall);
+  // #3125: Io's dialogue line (#line) already says "I remember the door you
+  // chose: …". Keep the door choice as a data hook here, not as a second copy
+  // of that sentence.
+  heading.setAttribute("data-night-post-door-choice", doorChoice ?? "");
+  heading.setAttribute("data-night-post-door-label", doorLabel ?? "");
+  host.append(heading);
   if (!job) return;
 
   const accepted = acceptedJobId === job.id;
