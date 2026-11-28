@@ -11,16 +11,17 @@ export const createTerminalEndingRenderer = ({
   setOfferTrayVisibility,
 }) => {
   const saintOrraRecallLine = () => {
-    const ending = document.getElementById("episodeOneEnding")?.querySelector("[data-ending-cause]");
-    const endingCause = ending?.dataset.endingCause;
-    if (endingCause === "red-tag-withheld") {
-      return "You turned the tag down at the vigil, and still brought it to my door. I remember the courier.";
-    }
     if (state.player.redTagFirstTap === "take-second-packet") {
       return "You took the red tag at once. I remember the hand that did not wait.";
     }
     if (state.player.redTagFirstTap === "ask-what-changed") {
       return "You asked what changed before you carried it. I remember the question.";
+    }
+    // #3123: with no first tap, a withheld-tag card must not be paired with
+    // the unreconciled neutral delivery line.
+    const ending = document.getElementById("episodeOneEnding")?.querySelector("[data-ending-cause]");
+    if (ending?.dataset.endingCause === "red-tag-withheld") {
+      return "You turned the tag down at the vigil, and still brought it to my door. I remember the courier.";
     }
     return "You brought the red tag to my door. I remember the courier.";
   };
