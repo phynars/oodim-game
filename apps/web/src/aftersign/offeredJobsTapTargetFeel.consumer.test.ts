@@ -162,6 +162,20 @@ describe("#offeredJobs served-surface tap-target contract (drives real aftersign
     expect(offeredJobs.getAttribute("data-visible")).toBe("false");
   });
 
+  it("scopes transient job-offer press adoption to the offer tray", () => {
+    const servedHtml = readServedIndexHtml();
+
+    // Same-id replacement happens inside #offeredJobs. The persistent
+    // observer must not subscribe to document-wide mutations.
+    expect(servedHtml).toContain('document.getElementById("offeredJobs")');
+    expect(servedHtml).toContain(
+      "mountObserver.observe(offerSurface, { childList: true, subtree: true })",
+    );
+    expect(servedHtml).not.toContain(
+      "mountObserver.observe(document.body, { childList: true, subtree: true })",
+    );
+  });
+
   it("renders the safe-default offer on a fresh memory and the completed set after a delivery — divergent, tappable, 44px on both axes", () => {
     // === FRESH: no priorOutcome → safe-default only. ===
     const freshOffers = selectIoJobOffers(undefined);
