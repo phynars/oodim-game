@@ -941,8 +941,11 @@ const stampRouteMemoryConfirmation = () => {
   } else if (node.parentElement !== host) {
     host.appendChild(node);
   }
-  if (node.textContent !== routeMemoryConfirmation) {
-    node.textContent = routeMemoryConfirmation;
+  node.setAttribute("role", "status");
+  node.setAttribute("aria-live", "polite");
+  const confirmation = `Selected route: ${routeMemoryConfirmation}. Route recorded for this delivery.`;
+  if (node.textContent !== confirmation) {
+    node.textContent = confirmation;
   }
 };
 if (typeof document !== "undefined" && typeof MutationObserver !== "undefined") {

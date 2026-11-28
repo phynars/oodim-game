@@ -261,7 +261,7 @@ test.describe("AFTERSIGN route-choice reload playtest", () => {
       await expect(
         routeChoice.locator("[data-aftersign-route-memory-confirmation]"),
         "tapping a route-memory choice on a restored packet-choice should surface its label in the confirmation stamp",
-      ).toHaveText(choiceName, { timeout: WAIT_MS });
+      ).toHaveText(`Selected route: ${choiceName}. Route recorded for this delivery.`, { timeout: WAIT_MS });
 
       // #2944 player path: leave both kiosk-route buttons untouched, then tap
       // the packet and the visible delivery control. The resulting delivery
