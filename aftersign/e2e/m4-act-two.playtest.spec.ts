@@ -274,9 +274,15 @@ test.describe("M4 phone Act II playtest (#2705)", () => {
       const maudEntry = page.locator(
         'button[data-orra-payback-action="carry-name-to-bell-archive"]:not([disabled])',
       );
+      const maudEntryState = page.locator(
+        'button[data-orra-payback-action="carry-name-to-bell-archive"]',
+      );
       await expect(maudEntry).toBeVisible({ timeout: WAIT_MS });
       await expect(maudEntry).toHaveText("Carry the name to the Bell Archive");
       await tapRevealed(page, maudEntry);
+      await expect(maudEntryState).toHaveText("Opening Bell Archive…");
+      await expect(maudEntryState).toBeDisabled();
+      await expect(maudEntryState).toHaveAttribute("aria-busy", "true");
 
       const maud = page.locator('[data-beat="maud-bell-archive"]');
       await expect(maud).toBeVisible({ timeout: WAIT_MS });
