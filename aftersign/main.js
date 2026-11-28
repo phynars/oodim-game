@@ -9,6 +9,7 @@
 import * as THREE from "three";
 import { createKioskScene } from "./src/kioskScene.js";
 import { resolveIoDialogue } from "./src/ioDialogueResolver.js";
+import { selectDialogueBranch } from "./src/dialogueSelection.js";
 import { EPISODE_TWO_JOBS } from "./src/episodeTwoJobs.js";
 import {
   ACT_TWO_OPENING_BEATS,
@@ -1749,10 +1750,14 @@ const lineForBeat = () => {
     story: state.story,
     delivery: state.delivery,
   });
+  const dialogueBranch = selectDialogueBranch({
+    episodeTwoActOne,
+    story: state.story,
+  });
   // #3032 — Act II beat gate runs BEFORE the episodeTwoActOneEnded gate so a
   // reload that restores an Act II beat renders the opening, not the Act I
   // ending card (which still has `episodeTwoActOneEnded === true` beneath it).
-  if (episodeTwoActOne.actTwoOpening) {
+  if (dialogueBranch.kind === "act-two-opening") {
     if (typeof document !== "undefined") {
       renderEpisodeTwoActOneOrchestration({
         doc: document,
@@ -1772,7 +1777,7 @@ const lineForBeat = () => {
     state.npcs.io.lastLine = "";
     return "";
   }
-  if (state.story.episodeTwoActOneEnded && episodeTwoActOne.ending) {
+  if (dialogueBranch.kind === "act-one-ending") {
     if (typeof document !== "undefined") {
       renderEpisodeTwoActOneOrchestration({
         doc: document,
@@ -1800,7 +1805,7 @@ const lineForBeat = () => {
   });
   if (nightPostLine !== null) return nightPostLine;
   // Ending cards remain DOM-owned composition concerns.
-  if (state.story.maudBellArchiveEndingId) {
+  if (dialogueBranch.kind === "maud-ending") {
     if (
       typeof document !== "undefined"
       && !hasLiveMaudChoices(document)
@@ -1826,7 +1831,7 @@ const lineForBeat = () => {
     state.npcs.io.lastLine = "";
     return "";
   }
-  if (state.story.endingId) {
+  if (dialogueBranch.kind === "episode-one-ending") {
     const resolvedEnding = resolveEpisodeOneEnding({
       packetSealed: state.packet.sealed,
       redTagCarried: state.player.redTagAccepted === true,

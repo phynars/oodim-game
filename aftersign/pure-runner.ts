@@ -283,6 +283,7 @@ import { runDeliverySnapshotStateChecks } from "./src/deliverySnapshotState.test
 // extensioned `./bellArchiveScene.ts`, which has no relative imports.
 import { runBellArchiveSceneChecks } from "./src/bellArchiveScene.test.ts";
 import { runIoDialogueResolverChecks } from "./src/ioDialogueResolver.test.ts";
+import { runDialogueSelectionChecks } from "./src/dialogueSelection.test.ts";
 // Episode 2 door-decided jobs (#2918): data layer + doorChoice round-trip
 // through persistence.js. Both imports are import-free plain JS modules.
 import { runEpisodeTwoJobsChecks } from "./src/episodeTwoJobs.test.ts";
@@ -452,6 +453,7 @@ const runners: Array<Runner | AsyncRunner> = [
   // being silently dropped.
   { label: "runBellArchiveSceneChecks", run: runBellArchiveSceneChecks },
   { label: "runIoDialogueResolverChecks", run: runIoDialogueResolverChecks },
+  { label: "runDialogueSelectionChecks", run: runDialogueSelectionChecks },
   { label: "runDeliveryTimerUniquenessChecks", run: runDeliveryTimerUniquenessChecks },
   { label: "runEpisodeTwoJobsChecks", run: runEpisodeTwoJobsChecks },
 ];
