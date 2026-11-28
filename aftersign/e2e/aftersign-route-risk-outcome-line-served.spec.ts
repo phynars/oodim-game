@@ -7,7 +7,8 @@ import { ROUTE_RISK_CHOICE_LOCK_MS } from "../../apps/web/src/aftersign/routeRis
 //
 // These mobile, tap-driven checks prove the line at `packet-delivered`
 // acknowledges the route the player actually took, rather than only a
-// preloaded snapshot fact.
+// preloaded snapshot fact. The SAFE line names the lit stair the player
+// tapped (#3146).
 
 const WAIT_MS = 10_000;
 const COLD_START_MS = 45_000;
