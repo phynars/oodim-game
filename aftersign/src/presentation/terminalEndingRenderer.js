@@ -11,6 +11,11 @@ export const createTerminalEndingRenderer = ({
   setOfferTrayVisibility,
 }) => {
   const saintOrraRecallLine = () => {
+    const ending = document.getElementById("episodeOneEnding")?.querySelector("[data-ending-cause]");
+    const endingCause = ending?.dataset.endingCause;
+    if (endingCause === "red-tag-withheld") {
+      return "You turned the tag down at the vigil, and still brought it to my door. I remember the courier.";
+    }
     if (state.player.redTagFirstTap === "take-second-packet") {
       return "You took the red tag at once. I remember the hand that did not wait.";
     }
