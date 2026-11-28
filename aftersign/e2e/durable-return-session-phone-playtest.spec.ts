@@ -160,7 +160,9 @@ test.describe("AFTERSIGN durable save/load phone playtest", () => {
     // here was wrong: the button stays visible, so CI reported
     // "Received: visible" against the previous revision.
     await expect(page.locator("#deliverButton")).toBeVisible({ timeout: WAIT_MS });
-    await expect(page.locator("#deliverButton")).toHaveText("Return to Io");
+    // #3068: during the live auto-advance window it reads a pending status
+    // instead, so no "Return to Io" shows and then vanishes.
+    await expect(page.locator("#deliverButton")).toHaveText(/^(Io is reading the packet…|Return to Io)$/);
     const delivered = await snapshot(page);
     expect(delivered.delivery.outcome).toBe("sealed");
     expect(delivered.npcs.io.memory.length).toBeGreaterThan(0);
