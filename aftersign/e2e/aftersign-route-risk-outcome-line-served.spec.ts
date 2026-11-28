@@ -96,6 +96,7 @@ test.describe("AFTERSIGN packet-delivered route-outcome line (#1963)", () => {
     const line = page.locator("#line");
     await expect(line).toBeVisible({ timeout: WAIT_MS });
     await expect(line).toHaveText(SAFE_OUTCOME_LINE, { timeout: WAIT_MS });
+    await expect(line).toContainText(/lit stair/i, { timeout: WAIT_MS });
     expect((await line.textContent()) ?? "").not.toBe(FRESH_DELIVERED_LINE);
     expect(await snapshotIoLine(page)).toBe(SAFE_OUTCOME_LINE);
   });
