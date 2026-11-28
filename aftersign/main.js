@@ -5890,38 +5890,15 @@ const deliverPacket = (source = "hud-button") => {
   lastImpactBurstChirpAt = null;
   playKioskConfirm();
   markStateDirty();
-  // #3068: set before setBeat so the first packet-delivered render already
-  // shows the pending status, never a "Return to Io" that the timer below
-  // would replace.
-  deliveryAutoAdvancePending = true;
+  // Delivery ends on the explicit Return to Io control. The recognition
+  // report may finish asynchronously, but it must not replace that control.
+  deliveryAutoAdvancePending = false;
   setBeat("packet-delivered");
   deliveryRecognitionTimeout = setTimeout(() => {
     deliveryRecognitionTimeout = null;
-    // Settle-gate producer for the `choose-return-tone` guard above.
-    // This callback synchronously promotes the beat to
-    // `io-return-recognition` (via `setBeat(...)` further down); stamp
-    // the wall-clock instant NOW so a `pointerup` that races the
-    // transition — the "same gesture reinterpreted as the newly-
-    // rendered return-tone control" case — sees
-    // `performance.now() - enteredAt < RECOGNITION_SETTLE_MS` and is
-    // silently no-op'd. The stamp precedes `setBeat(...)` in source
-    // order but both run in this same synchronous callback body, so
-    // no tap handler can observe the beat transition before the
-    // stamp lands. `state.interaction` is initialized at boot; see
-    // its default shape further up.
-    if (!state.interaction || typeof state.interaction !== "object") {
-      state.interaction = {};
-    }
-    // #3068: "Return to Io" is a real tap target at packet-delivered. When
-    // the player taps it before this timer fires, `advance()` has already
-    // moved on (often to a tone choice by now); promoting the beat here
-    // again would snap the screen back to Io's recall. Still publish the
-    // memory beat below, but only advance from `packet-delivered`.
+    // Publish recognition state without changing the player-visible beat.
+    // `packet-delivered` remains until the player taps Return to Io.
     deliveryAutoAdvancePending = false;
-    const stillAtDelivery = state.scene.beat === "packet-delivered";
-    if (stillAtDelivery) {
-      state.interaction.recognitionEnteredAt = performance.now();
-    }
     const beatEndedAt = performance.now();
     const durableOutcome = state.npcs.io.memory.find((fact) => fact.kind === "delivery-outcome")?.object === "opened" ? "opened" : "sealed";
     const secondAction = secondActionFromMemory(state.npcs.io.memory);
@@ -5949,18 +5926,7 @@ const deliverPacket = (source = "hud-button") => {
         : "io_return_packet_opened",
     };
     markStateDirty();
-    if (stillAtDelivery) {
-      setBeat("io-return-recognition");
-    } else {
-      publishState();
-    }
-    // #2336: the only durable write on this path used to be the
-    // persistAuthoritative() below, which fires at `packet-delivered`
-    // BEFORE this 1180ms auto-advance. A reload while Io was already
-    // speaking the recognition line restored the stale
-    // `packet-delivered` beat (and armed the returning boot line over
-    // it). Persist the advanced beat so reload stays on
-    // `io-return-recognition`.
+    publishState();
     void persistAuthoritative({ dirty: true });
   }, 1180);
   void persistAuthoritative({ dirty: true });
