@@ -40,6 +40,8 @@ test.describe("packet-choice layout and route-memory feedback", () => {
     await choice.click();
 
     await expect(routeChoice).toContainText(choiceName);
-    await expect(routeChoice.locator("[data-aftersign-route-memory-confirmation]")).toHaveText(choiceName);
+    await expect(routeChoice.locator("[data-aftersign-route-memory-confirmation]")).toHaveText(
+      `Selected route: ${choiceName.trim()}. Route recorded for this delivery.`,
+    );
   });
 });
