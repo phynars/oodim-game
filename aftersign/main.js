@@ -49,6 +49,7 @@ import {
   buildOrraRecognitionMemoryFact,
   coerceOrraRecognitionMemory,
   lineCopyForOrraLineId,
+  latestOrraRecognitionMemory,
   ORRA_FIRST_CONTACT_LINE_ID,
   ORRA_RETURN_LINE_BY_ACTION,
   selectOrraRecognitionLine,
@@ -1814,6 +1815,7 @@ const lineForBeat = () => {
     const resolvedEnding = resolveEpisodeOneEnding({
       packetSealed: state.packet.sealed,
       redTagCarried: state.player.redTagAccepted === true,
+      vigilAction: latestOrraRecognitionMemory(state.npcs.orra.memory)?.action,
     });
     if (typeof document !== "undefined" && !hasLiveMaudChoices(document)) {
       renderEpisodeOneEnding(document, resolvedEnding);
@@ -4505,9 +4507,9 @@ const choose = async (choiceId) => {
     // recognized the vigil action by REFERENCE (not by English text).
     state.npcs.orra.lastLineMemoryRefs = [state.npcs.orra.lastLineId];
     // Both visible vigil choices complete the episode. Lighting the vigil is
-    // the player's visible acceptance of Orra's red tag: it promises the
-    // light stays on, so it must commit the matching durable outcome. The
-    // canonical forceSave() below persists this field with the ending.
+    // the player's visible acceptance of Orra's red tag, while sparing it
+    // commits the distinct mercy ending. The canonical forceSave() below
+    // persists either outcome with the ending.
     if (choiceId === "light-vigil") {
       state.player.redTagAccepted = true;
     }
@@ -4515,6 +4517,7 @@ const choose = async (choiceId) => {
       const ending = resolveEpisodeOneEnding({
         packetSealed: state.packet.sealed,
         redTagCarried: state.player.redTagAccepted === true,
+        vigilAction: orraAction,
       });
       state.story.endingId = ending.id;
       state.story.endingCause = ending.cause ?? null;

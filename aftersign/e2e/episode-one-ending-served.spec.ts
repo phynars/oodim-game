@@ -579,6 +579,22 @@ test.describe("Saint Orra red-tag recall", () => {
 test.describe("M3-E1 Episode 1 ending — served, phone-tapped", () => {
   test.describe.configure({ mode: "serial" });
 
+  test("keeps the spare-vigil mercy outcome distinct after a visible phone tap (#3131)", async ({ page }) => {
+    test.setTimeout(COLD_START_MS);
+    await page.setViewportSize(PHONE_VIEWPORT);
+    await page.goto(`/aftersign/?slot=spare-vigil-mercy-${Date.now()}`, { waitUntil: "load" });
+    await waitForVersion(page);
+
+    await runToEnding(page, "sealed", true, "accept-second-packet", "spare-vigil");
+
+    const card = await readEndingCard(page);
+    await expect(card).toHaveAttribute("data-ending-id", "ending-vigil-spared");
+    await expect(card).toHaveAttribute("data-ending-cause", "vigil-spared");
+    await expect(card).toContainText("Saint Orra remembers your mercy");
+    await expect(card).toContainText("South district light: out");
+    await expect(card).not.toContainText("red tag for Saint Orra");
+  });
+
   test("keeps Light and Spare vigil memories distinct on the phone ending card after reload (#3138)", async ({ page, browser }) => {
     test.setTimeout(COLD_START_MS);
 

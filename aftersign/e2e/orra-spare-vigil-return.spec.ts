@@ -37,9 +37,9 @@ async function playToSpareVigil(page: Page): Promise<void> {
   await tapChoice(page, "ask-for-next-job");
   await waitForBeat(page, "io-next-job");
   await tapChoice(page, "accept-second-packet");
-  // Both visible actions commit the same ending, but their labels name the
-  // action-specific memory that Orra receives. The phone viewport assertion
-  // guards the original report: neither button may extend below the screen.
+  // The visible vigil actions must commit their distinct labeled outcomes.
+  // The phone viewport assertion guards the original report: neither button
+  // may extend below the screen.
   const light = page.locator('button[data-choice-id="light-vigil"]:not([disabled])').first();
   const spare = page.locator('button[data-choice-id="spare-vigil"]:not([disabled])').first();
   await expect(light).toBeVisible({ timeout: WAIT_MS });
@@ -65,7 +65,10 @@ test("served spare-vigil ending survives reload as a terminal ending", async ({ 
   const ending = page.locator("#episodeOneEnding [data-ending-id]").first();
   await expect(ending).toBeVisible({ timeout: WAIT_MS });
   const endingId = await ending.getAttribute("data-ending-id");
-  expect(endingId).toBeTruthy();
+  await expect(ending).toHaveAttribute("data-ending-id", "ending-vigil-spared");
+  await expect(ending).toHaveAttribute("data-ending-cause", "vigil-spared");
+  await expect(ending).toContainText("Saint Orra remembers your mercy");
+  await expect(ending).toContainText("South district light: out");
 
   await page.reload({ waitUntil: "load" });
   await waitForVersion(page);
