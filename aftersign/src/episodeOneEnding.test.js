@@ -20,9 +20,21 @@ describe("resolveEpisodeOneEnding", () => {
   it("rings true only when the blue packet is sealed AND the red tag was carried", () => {
     expect(
       resolveEpisodeOneEnding({ packetSealed: true, redTagCarried: true }),
-    ).toBe(EPISODE_ONE_ENDINGS.true);
+    ).toMatchObject(EPISODE_ONE_ENDINGS.true);
     expect(EPISODE_ONE_ENDINGS.true.id).toBe("ending-bell-true");
     expect(EPISODE_ONE_ENDINGS.true.light).toBe("lit");
+  });
+
+  it("resolves a sealed, accepted red-tag spare vigil to the distinct mercy outcome", () => {
+    const ending = resolveEpisodeOneEnding({
+      packetSealed: true,
+      redTagCarried: true,
+      vigilAction: "spared",
+    });
+    expect(ending).toBe(EPISODE_ONE_ENDINGS.mercy);
+    expect(ending.id).toBe("ending-vigil-spared");
+    expect(ending.cause).toBe("vigil-spared");
+    expect(ending.ioLine).toMatch(/remembers your mercy/i);
   });
 
   it("rings for the wrong name AND cites the opened packet when the packet was opened (red tag carried)", () => {

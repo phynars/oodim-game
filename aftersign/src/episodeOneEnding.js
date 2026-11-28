@@ -34,6 +34,14 @@ const ENDINGS = {
       "The red tag was offered, but you did not accept it. The archive had to guess who the dark belonged to.",
     line: "The red tag was not accepted, and the district light goes out.",
   }),
+  mercy: Object.freeze({
+    id: "ending-vigil-spared",
+    cause: "vigil-spared",
+    light: "out",
+    bellLine: "The Bell Archive keeps the vigil dark, as you asked.",
+    ioLine: "Saint Orra remembers your mercy: you spared the vigil.",
+    line: "You spared the vigil, and the district light stays out.",
+  }),
 };
 
 Object.defineProperty(ENDINGS, "false", {
@@ -47,7 +55,13 @@ export const EPISODE_ONE_ENDINGS = Object.freeze(ENDINGS);
 export const resolveEpisodeOneEnding = ({
   packetSealed,
   redTagCarried,
+  vigilAction,
 } = {}) => {
+  // Sparing the vigil is a deliberate terminal outcome, independent of the
+  // packet and red-tag axes used by the light-vigil ending.
+  if (vigilAction === "spared" && packetSealed && redTagCarried === true) {
+    return EPISODE_ONE_ENDINGS.mercy;
+  }
   // A truthy delivery id or offered-job marker is not evidence that the
   // player accepted the visible handoff control. Only the explicit boolean
   // stamped by that tap may authorize the red-tag memory.
@@ -96,6 +110,10 @@ export const renderEpisodeOneEnding = (doc, ending, { onBeginEpisodeTwo } = {}) 
   const recall = doc.createElement("p");
   recall.className = "episode-one-ending__recall";
   recall.textContent = ending.ioLine;
+  const vigil = doc.createElement("p");
+  vigil.className = "episode-one-ending__vigil";
+  vigil.setAttribute("data-vigil-action", ending.vigilAction ?? "lit");
+  vigil.textContent = ending.vigilLine;
   const districtLight = doc.createElement("p");
   districtLight.className = "episode-one-ending__light";
   districtLight.setAttribute("data-district-light", ending.light);
