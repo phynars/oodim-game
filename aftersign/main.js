@@ -3175,8 +3175,11 @@ const renderText = () => {
     // #2976: the tray is offered at io-next-job alongside the packet
     // loop's controls; index.html keeps it in flow after `.controls` so
     // it never covers "Deliver next packet" / "Ask what changed".
+    // The initial red-tag handoff must show only its packet controls; do not
+    // offer Episode 1 endings alongside the player's next job step.
     const vigilVisible =
       isNextJobBeat
+      && state.delivery?.outcome !== "unknown"
       && !state.story.endingId;
     if (vigilChoice.dataset.visible !== String(vigilVisible)) {
       vigilChoice.dataset.visible = String(vigilVisible);
