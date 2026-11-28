@@ -55,10 +55,6 @@ export const renderNightPost = ({
   }
   accept.addEventListener("click", async () => {
     if (accept.disabled) return;
-    accept.disabled = true;
-    accept.setAttribute("data-pending", "true");
-    accept.setAttribute("aria-busy", "true");
-    accept.textContent = "Accepting…";
     await onAcceptJob(job);
     const choices = doc.getElementById("nikoThread")?.querySelectorAll("[data-niko-shortcut-choice]") ?? [];
     const lastChoice = choices[choices.length - 1];
@@ -90,6 +86,10 @@ export const renderNightPost = ({
   routeLine.setAttribute("data-niko-route", route);
   routeLine.textContent = nikoRouteLine(routeRisk, routeRiskDeliveryId);
   nikoCard.append(routeLine);
+  const shortcutExplanation = doc.createElement("p");
+  shortcutExplanation.setAttribute("data-niko-shortcut-explanation", "true");
+  shortcutExplanation.textContent = "Niko offers a quicker route to the Night Post registry; taking it changes how you arrive.";
+  nikoCard.append(shortcutExplanation);
   const receipt = nikoShortcutReceipt(nikoShortcutAnswer);
   if (receipt) {
     const answerLine = doc.createElement("p");

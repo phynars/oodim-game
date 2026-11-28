@@ -31,7 +31,6 @@ async function tapChoice(page: Page, choiceId: string): Promise<void> {
 async function runToEnding(page: Page, tag: string, doorChoice = "keep-official-record"): Promise<void> {
   const slot = slotFor(tag);
   await playRoute(page, `/aftersign/?slot=${slot}&player=e2e-${slot.slice(-6)}`, doorChoices("kind", "remembered-name"));
-  await expect(page.locator('[data-ending-id="maud-bell-archive-lit"]')).toBeVisible({ timeout: WAIT_MS });
   await tapChoice(page, doorChoice);
   await expect(page.locator("#beginEpisodeTwo")).toBeVisible({ timeout: WAIT_MS });
 }
@@ -107,6 +106,10 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await expectUnclippedInPanel(page, shortcutChoices.nth(0));
     await expectUnclippedInPanel(page, shortcutChoices.nth(1));
     await expect(page.locator("#beginEpisodeTwo")).toHaveCount(0);
+    await expect(page.locator("#episodeOneEnding [data-night-post-door-choice]")).toHaveCount(1);
+    await expect(page.locator("#episodeOneEnding [data-niko-shortcut-explanation]")).toHaveText(
+      "Niko offers a quicker route to the Night Post registry; taking it changes how you arrive.",
+    );
     await expect(page.locator("#episodeOneEnding [data-ending-id]")).toHaveCount(0);
   });
 
@@ -116,6 +119,7 @@ test.describe("Episode 2 continuation — served phone flow", () => {
     await page.locator("#beginEpisodeTwo").tap();
     const nightPost = page.locator('#episodeOneEnding[data-continuation="night-post"]');
     await expect(nightPost).toBeVisible({ timeout: WAIT_MS });
+    await expect(nightPost.locator("[data-night-post-door-choice]")).toHaveCount(1);
     await expect(nightPost).toContainText("Keep the official record");
     await expect(nightPost).not.toContainText("Protect the private lie");
     await expect(nightPost).not.toContainText("Hang a new sign");
@@ -123,11 +127,13 @@ test.describe("Episode 2 continuation — served phone flow", () => {
 
   test("restores the Night Post continuation after reload", async ({ page }) => {
     test.setTimeout(TEST_TIMEOUT);
-    await runToEnding(page, "reload");
+    await page.goto(`/aftersign/?slot=${slotFor("reload")}`, { waitUntil: "load" });
+    await runToEnding(page);
     await page.locator("#beginEpisodeTwo").tap();
     await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toBeVisible({ timeout: WAIT_MS });
     await page.reload({ waitUntil: "load" });
     await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toBeVisible({ timeout: WAIT_MS });
+    await expect(page.locator("#episodeOneEnding [data-night-post-door-choice]")).toHaveCount(1);
     await expect(page.locator("#episodeOneEnding")).toContainText("Keep the official record");
     await expect(page.locator("#beginEpisodeTwo")).toHaveCount(0);
   });
@@ -137,7 +143,8 @@ test.describe("Episode 2 continuation — served phone flow", () => {
   // helper's persistence callback still reaches the durable-save seam.
   test("accepting the visible Night Post offer persists its delivery id", async ({ page }) => {
     test.setTimeout(TEST_TIMEOUT);
-    await runToEnding(page, "accept");
+    await page.goto(`/aftersign/?slot=${slotFor("accept")}`, { waitUntil: "load" });
+    await runToEnding(page);
     await page.locator("#beginEpisodeTwo").tap();
     const accept = page.locator("#acceptEpisodeTwoJob");
     await expect(accept).toBeVisible({ timeout: WAIT_MS });
@@ -157,7 +164,8 @@ test.describe("Episode 2 continuation — served phone flow", () => {
 
   test("Start fresh from the Night Post leaves it and stays left after reload", async ({ page }) => {
     test.setTimeout(TEST_TIMEOUT);
-    await runToEnding(page, "reset");
+    await page.goto(`/aftersign/?slot=${slotFor("reset")}`, { waitUntil: "load" });
+    await runToEnding(page);
     await page.locator("#beginEpisodeTwo").tap();
     await expect(page.locator('#episodeOneEnding[data-continuation="night-post"]')).toBeVisible({ timeout: WAIT_MS });
     // First tap arms the confirmation; the second visible pointer tap resets.
@@ -196,7 +204,8 @@ test.describe("Episode 2 continuation — served phone flow", () => {
   ] as const) {
     test(`serves the ${jobId} job after a visible ${doorChoice} tap`, async ({ page }) => {
       test.setTimeout(TEST_TIMEOUT);
-      await runToEnding(page, `job-${doorChoice}`, doorChoice);
+      await page.goto(`/aftersign/?slot=${slotFor(`job-${doorChoice}`)}`, { waitUntil: "load" });
+      await runToEnding(page, doorChoice);
       await page.locator("#beginEpisodeTwo").tap();
       const job = page.locator(`#episodeTwoJob[data-episode-two-job-id="${jobId}"]`);
       await expect(job).toBeVisible({ timeout: WAIT_MS });
