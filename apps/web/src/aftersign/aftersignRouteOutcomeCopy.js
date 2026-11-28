@@ -18,7 +18,7 @@
 // they did (same action keying as `aftersignPacketRecallToken`).
 
 const ROUTE_OUTCOME_LINES = Object.freeze({
-  safe: "You kept to the light. It saw you home. The ledger marks you careful.",
+  safe: "You chose the lit stair and kept to its light. It saw you home. The ledger marks you careful.",
   // #2179: the `fast` class covers BOTH "Cut past the bell rope" and
   // "Carry the fragile packet" (see aftersignPacketRecallCopy.js #2164),
   // and this line is keyed on the class alone. It must name no specific
