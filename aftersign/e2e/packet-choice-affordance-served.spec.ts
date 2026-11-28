@@ -122,8 +122,8 @@ test.describe("AFTERSIGN packet-choice affordance line — served (#1774)", () =
     // clearing the packet-choice receipt must not shadow it.
     await expect(
       page.locator("#deliverButton"),
-      "delivered beat must relabel the deliver control to Return to Io",
-    ).toHaveText("Return to Io", { timeout: WAIT_MS });
+      "delivered beat must relabel the deliver control (#3068: a pending status while Io's beat auto-advances)",
+    ).toHaveText(/^(Io is reading the packet…|Return to Io)$/, { timeout: WAIT_MS });
     await expect(page.locator("#deliverButton")).toHaveAttribute(
       "data-choice-id",
       "return-to-io",

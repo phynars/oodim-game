@@ -48,50 +48,41 @@ async function waitForBeat(page: Page, beat: string): Promise<void> {
 
 type ReturnBeat = "io-return-recognition" | "return-tone-choice";
 
-// "Return to Io" lives on #deliverButton at `packet-delivered`, and
-// deliverPacket()'s ~1180ms auto-advance (kept by #3068) relabels that SAME
-// button "Blunt return" in place. On a loaded CI runner Playwright's
-// actionability wait before the tap can outlast that timer, so the finger
-// lands on "Blunt return" — a legal tone commit — instead of "Return to Io".
-// Record the label actually under the finger at pointerdown and assert the
-// beat THAT label leads to, so the spec checks the game, not the runner's
-// speed. Returns the beat reached.
-async function tapReturnToIo(page: Page): Promise<ReturnBeat> {
-  const deliverButton = page.locator("#deliverButton");
-  await expect(deliverButton).toHaveText("Return to Io");
+// #3068: after a live delivery deliverPacket()'s ~1180ms timer moves the
+// scene to Io's recognition beat by itself. "Return to Io" must therefore
+// never be drawn in that window (it would show, then vanish before a phone
+// tap). Record every label #deliverButton carries from the delivery until
+// the recognition beat, then assert "Return to Io" was never one of them.
+async function installDeliverLabelRecorder(page: Page): Promise<void> {
   await page.evaluate(() => {
     const button = document.getElementById("deliverButton")!;
-    window.__returnSurfaceDownLabel = undefined;
-    button.addEventListener(
-      "pointerdown",
-      () => {
-        window.__returnSurfaceDownLabel = button.textContent?.trim() ?? "";
-      },
-      { capture: true, once: true },
-    );
+    const w = window as unknown as { __deliverLabels: string[]; __deliverLabelObserver?: MutationObserver };
+    w.__deliverLabelObserver?.disconnect();
+    w.__deliverLabels = [button.textContent?.trim() ?? ""];
+    const observer = new MutationObserver(() => {
+      w.__deliverLabels.push(button.textContent?.trim() ?? "");
+    });
+    observer.observe(button, { childList: true, characterData: true, subtree: true });
+    w.__deliverLabelObserver = observer;
   });
+}
+
+async function tapDeliverAndReachIo(page: Page): Promise<ReturnBeat> {
+  await installDeliverLabelRecorder(page);
   await tap(page, "#deliverButton");
-  const downLabel = await page.evaluate(() => window.__returnSurfaceDownLabel);
-  if (downLabel === "Return to Io") {
-    // The tap was "Return to Io" (or the timer moved the beat there while
-    // the finger was down; the #2181 settle gate refuses that stroke as a
-    // tone). Either way Io's recognition beat is what the player sees.
-    await waitForBeat(page, "io-return-recognition");
-    return "io-return-recognition";
-  }
-  expect(downLabel, "tap landed on the auto-advanced tone control").toBe("Blunt return");
-  // The timer won: the tap struck the visible "Blunt return" tone. It
-  // commits, unless the #2174 settle gate refused it inside its 120ms
-  // window, which leaves Io's recognition beat up. Let the commit land.
-  // allowed: a refused stroke leaves no state change to wait on, so the settle window must elapse
-  await page.waitForTimeout(400);
-  const beat = (await snapshot(page)).scene.beat;
-  expect(["io-return-recognition", "return-tone-choice"]).toContain(beat);
-  return beat as ReturnBeat;
+  await waitForBeat(page, "io-return-recognition");
+  const labels = await page.evaluate(() => {
+    const w = window as unknown as { __deliverLabels: string[]; __deliverLabelObserver?: MutationObserver };
+    w.__deliverLabelObserver?.disconnect();
+    return w.__deliverLabels;
+  });
+  expect(labels, "Return to Io must not be drawn while the scene auto-advances").not.toContain("Return to Io");
+  expect(labels, "the delivered control names the pending return").toContain("Io is reading the packet…");
+  return "io-return-recognition";
 }
 
 // From Io's recognition beat, strike the blunt tone; a no-op when the
-// "Return to Io" tap already landed on it (see tapReturnToIo).
+// recognition beat was not reached (see tapDeliverAndReachIo).
 async function chooseBluntReturn(page: Page, reached: ReturnBeat): Promise<void> {
   if (reached === "io-return-recognition") {
     await expect(page.locator("#deliverButton")).toHaveText("Blunt return");
@@ -112,8 +103,7 @@ async function reachRoundTwoRedTag(page: Page, slotPrefix: string) {
     // pointer-driven taps. The regression is on the round-two red-tag
     // seal, not the first-packet funnel.
     await tap(page, "#packetButton");
-    await tap(page, "#deliverButton");
-    const reached = await tapReturnToIo(page);
+    const reached = await tapDeliverAndReachIo(page);
 
     // Choose a tone and return to Io so the round-two red-tag beat
     // renders. Blunt via `#deliverButton` is the shortest return path.
@@ -142,15 +132,13 @@ test.describe("AFTERSIGN red-tag round-two confirmation (#2829, #2356)", () => {
   // #2829 — tap the visible red-tag tile. Main keeps the original label
   // after this gesture, so the confirmation assertion fails there; the fix
   // names the successful seal on the tile.
-  test("round-two red-tag delivery waits for Return to Io and has no stale listened receipt", async ({ page }) => {
+  test("round-two red-tag delivery never flashes Return to Io and has no stale listened receipt", async ({ page }) => {
     const packetButton = await reachRoundTwoRedTag(page, "red-tag-tap");
     await tap(page, "#packetButton");
     await expect(packetButton).toHaveText("Red tag — Saint Orra · seal confirmed");
     await waitForBeat(page, "packet-choice");
-    await tap(page, "#deliverButton");
-    await expect(page.locator("#deliverButton")).toHaveText("Return to Io");
     await expect(page.getByText("You listened", { exact: true })).toHaveCount(0);
-    await tapReturnToIo(page);
+    await tapDeliverAndReachIo(page);
     await expect(page.getByText("You listened", { exact: true })).toHaveCount(0);
   });
 
@@ -167,8 +155,7 @@ test.describe("AFTERSIGN red-tag round-two confirmation (#2829, #2356)", () => {
     await waitForBeat(page, "packet-choice");
     await tap(page, "#acknowledgeRouteButton");
     await expect(page.locator("#acknowledgeRouteButton")).toHaveText("You listened");
-    await tap(page, "#deliverButton");
-    const reached = await tapReturnToIo(page);
+    const reached = await tapDeliverAndReachIo(page);
     await chooseBluntReturn(page, reached);
     await tap(page, "#deliverButton");
     await waitForBeat(page, "io-next-job");
@@ -182,9 +169,7 @@ test.describe("AFTERSIGN red-tag round-two confirmation (#2829, #2356)", () => {
     await expect(page.locator("#acknowledgeRouteButton")).not.toHaveAttribute("aria-pressed", "true");
     await expect(page.getByText("You listened", { exact: true })).toHaveCount(0);
 
-    await tap(page, "#deliverButton");
-    await expect(page.getByText("You listened", { exact: true })).toHaveCount(0);
-    await tapReturnToIo(page);
+    await tapDeliverAndReachIo(page);
     await expect(page.getByText("You listened", { exact: true })).toHaveCount(0);
   });
 
